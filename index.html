@@ -38,6 +38,7 @@
     <div class="browser-pane" id="webview-container"></div>
 
     <div class="sidebar" id="sidebar">
+      <div class="sidebar-resize" id="sidebar-resize" title="Drag to resize"></div>
       <div class="sidebar-tabs">
         <div class="sbtab active" data-app="gmail" title="Gmail">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 6l9 7 9-7"/></svg>
@@ -62,8 +63,15 @@
         <webview id="panel-youtube" src="https://www.youtube.com" partition="persist:main" useragent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"></webview>
         <webview id="panel-assistant" src="https://claude.ai" partition="persist:main" useragent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"></webview>
       </div>
+      <div class="sidebar-foot">
+        <button class="zoombtn" id="zoom-out" title="Zoom out">&#8722;</button>
+        <span class="zoomlabel" id="zoom-label" title="Click to reset">100%</span>
+        <button class="zoombtn" id="zoom-in" title="Zoom in">+</button>
+      </div>
     </div>
   </div>
+
+  <div class="drag-shield" id="drag-shield"></div>
 
 </div>
 <script src="renderer.js"></script>

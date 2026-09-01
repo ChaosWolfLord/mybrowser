@@ -18,36 +18,31 @@ Open a terminal (PowerShell or Command Prompt) in this folder and run:
 npm install
 ```
 
-### 3. Create the GitHub repo that will host updates
-This is what makes silent auto-updates possible without paying for a
-code-signing certificate.
+### 3. The GitHub repo that hosts updates  (done, with one thing left)
+Silent auto-updates work by checking a GitHub repo for new releases, which
+is what avoids paying for a code-signing certificate.
 
-1. Go to [github.com/new](https://github.com/new) while signed in as
-   **chaoswolf**.
-2. Name it `my-browser`, set it to **Public** (electron-updater reads public
-   repos with no extra setup — this is just your app's code and release
-   files, nothing sensitive), and create it without a README.
-3. Push this project to it:
-   ```
-   git init
-   git add .
-   git commit -m "Initial version"
-   git branch -M main
-   git remote add origin https://github.com/chaoswolf/my-browser.git
-   git push -u origin main
-   ```
+The repo already exists and this project is already pushed to it:
+**https://github.com/ChaosWolfLord/mybrowser**
+
+**One thing still to do:** the repo is currently *private*, and
+electron-updater cannot read releases from a private repo without a token
+baked into the shipped app. Until it is public, the update check fails
+silently every time. To fix it, go to the repo's **Settings -> General ->
+Danger Zone -> Change visibility -> Make public**. Nothing sensitive lives
+in here: it is about 700 lines of UI code plus the installer.
 
 ### 4. Create a GitHub token (needed only to publish new versions, not to run the app)
-1. Go to **github.com → Settings → Developer settings → Personal access
-   tokens → Fine-grained tokens → Generate new token**.
-2. Scope it to just the `my-browser` repo, with **Contents: Read and write**
+1. Go to **github.com -> Settings -> Developer settings -> Personal access
+   tokens -> Fine-grained tokens -> Generate new token**.
+2. Scope it to just the `mybrowser` repo, with **Contents: Read and write**
    permission.
-3. Copy the token somewhere safe — you'll set it as `GH_TOKEN` whenever you
+3. Copy the token somewhere safe -- you'll set it as `GH_TOKEN` whenever you
    publish a new version (see below).
 
 ### 5. Build and install the app
 ```
-set GH_TOKEN=your_token_here
+$env:GH_TOKEN = "your_token_here"
 npm run release
 ```
 This builds a Windows installer and uploads it to a GitHub Release in your
@@ -61,9 +56,10 @@ future auto-updates.
 ## From here on: just open it from the Start Menu
 
 - **Auto-updates**: every time you open the app, and every 4 hours while
-  it's running, it quietly checks `github.com/chaoswolf/my-browser` for a
+  it's running, it quietly checks `github.com/ChaosWolfLord/mybrowser` for a
   newer release, downloads it in the background, and installs it the next
-  time you close the window — never interrupting you mid-session.
+  time you close the window -- never interrupting you mid-session. (This
+  needs the repo to be public; see step 3.)
 - **Your tabs are restored** exactly where you left them each time you
   reopen it.
 
@@ -75,7 +71,7 @@ Whenever you want to change something (ask me, or edit the files yourself):
 2. Bump the `"version"` field in `package.json` (e.g. `1.0.0` → `1.0.1`).
 3. Run:
    ```
-   set GH_TOKEN=your_token_here
+   $env:GH_TOKEN = "your_token_here"
    npm run release
    ```
 That's it — every copy of the app already installed on your computer will
@@ -103,6 +99,17 @@ in the background so switching is instant:
 | Drop | Drive | blue `#7C93B0` |
 | Play | YouTube | brick `#B85C4A` |
 | Star | Claude | violet `#8B7EC8` |
+
+**Sizing it to taste:** drag the sidebar's left edge to make it wider or
+narrower, and use the zoom controls in the bottom-right corner to scale the
+app inside it. Zoom is tracked per app, so Gmail can sit at 80% while Claude
+stays at 100%, and clicking the percentage resets that app to its default.
+Both the width and the zoom levels are remembered between restarts.
+
+Gmail, Calendar and Drive default to 80% because they decide between their
+desktop and mobile layouts based on browser identity rather than the width
+they actually have -- so in a narrow panel they still lay out a full desktop
+UI, and zooming out is what gives them the room to fit it.
 
 **Want ChatGPT instead of Claude?** In `index.html`, find the line with
 `id="panel-assistant"` and change `src="https://claude.ai"` to
