@@ -1,6 +1,19 @@
+// Desktop Chrome, the default everywhere. Google's sign-in flow checks the
+// user-agent and refuses one it doesn't recognise.
 const CHROME_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
+
+// Android Chrome. Gmail, Calendar and Drive pick their layout from the
+// user-agent rather than from the width they actually have: told they are
+// on a desktop they lay out a full desktop UI and overflow a narrow panel,
+// and no amount of zooming fixes that -- it only shrinks the text. Told
+// they are on a phone they serve the responsive layout, which is built for
+// exactly this shape. YouTube and Claude are genuinely responsive and look
+// right on the desktop string, so they keep it.
+const MOBILE_UA =
+  'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 ' +
+  '(KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36';
 
 const webviewContainer = document.getElementById('webview-container');
 const tabstrip = document.getElementById('tabstrip');
@@ -9,9 +22,30 @@ const backBtn = document.getElementById('back-btn');
 const fwdBtn = document.getElementById('fwd-btn');
 const reloadBtn = document.getElementById('reload-btn');
 
-let tabs = [];      // { id, webview, tabEl, titleEl }
+let tabs = [];      // { id, webview, tabEl, titleEl, pendingUrl }
 let activeId = null;
 let nextId = 1;
+
+// ---------- Preferences ----------
+
+function readPref(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw === null ? fallback : JSON.parse(raw);
+  } catch (err) {
+    return fallback;
+  }
+}
+
+function writePref(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (err) {
+    // Losing a saved preference shouldn't take the sidebar down with it.
+  }
+}
+
+// ---------- Tabs ----------
 
 function normalizeInput(raw) {
   const value = raw.trim();
@@ -28,16 +62,16 @@ function normalizeInput(raw) {
   return `https://www.google.com/search?q=${encodeURIComponent(value)}`;
 }
 
-// Google's sign-in flow often opens a small popup window. Electron's
-// <webview> silently blocks all popups unless this is set.
+// Google's sign-in flow opens a small popup. Electron's <webview> blocks
+// popups silently unless this is set; main.js decides which ones are
+// actually allowed through and turns the rest into tabs.
 function allowPopups(webview) {
   webview.setAttribute('allowpopups', 'true');
 }
 
-// Masks a couple of signals sites use to detect automated/embedded
-// browsers. This is an attempt to work around Google's "this browser
-// may not be secure" block — it may not always succeed, since Google
-// actively updates its detection over time.
+// Masks a signal sites use to detect automated/embedded browsers, to work
+// around Google's "this browser may not be secure" block. Google updates
+// its detection over time, so this may not hold forever.
 function hardenAgainstDetection(webview) {
   webview.addEventListener('dom-ready', () => {
     webview
@@ -52,22 +86,46 @@ function isNewTabUrl(url) {
   return !!url && url.endsWith('newtab.html');
 }
 
-function createTab(url) {
+// A readable stand-in for a tab that hasn't been loaded yet.
+function labelFor(url) {
+  if (isNewTabUrl(url)) return 'New tab';
+  try {
+    return new URL(url).hostname.replace(/^www\./, '') || url;
+  } catch (err) {
+    return url;
+  }
+}
+
+function currentUrlOf(tab) {
+  if (tab.pendingUrl) return tab.pendingUrl;
+  try {
+    return tab.webview.getURL() || tab.webview.getAttribute('src') || 'newtab.html';
+  } catch (err) {
+    return 'newtab.html';
+  }
+}
+
+function createTab(url, options) {
+  const opts = options || {};
   const id = nextId++;
+  const target = url || 'newtab.html';
 
   const webview = document.createElement('webview');
   webview.setAttribute('partition', 'persist:main');
   webview.setAttribute('useragent', CHROME_UA);
   allowPopups(webview);
   hardenAgainstDetection(webview);
-  webview.setAttribute('src', url || 'newtab.html');
+  // A deferred tab is created empty and only fetches its page when you
+  // first look at it. Restoring a session used to load every tab at once,
+  // which is most of why a cold start felt slow.
+  if (!opts.defer) webview.setAttribute('src', target);
   webviewContainer.appendChild(webview);
 
   const tabEl = document.createElement('div');
   tabEl.className = 'tab';
   const titleEl = document.createElement('span');
   titleEl.className = 'title';
-  titleEl.textContent = 'New tab';
+  titleEl.textContent = opts.defer ? labelFor(target) : 'New tab';
   const closeEl = document.createElement('span');
   closeEl.className = 'closebtn';
   closeEl.innerHTML =
@@ -76,7 +134,7 @@ function createTab(url) {
   tabEl.appendChild(closeEl);
   tabstrip.appendChild(tabEl);
 
-  const tab = { id, webview, tabEl, titleEl };
+  const tab = { id, webview, tabEl, titleEl, pendingUrl: opts.defer ? target : null };
   tabs.push(tab);
 
   tabEl.addEventListener('click', (e) => {
@@ -99,13 +157,11 @@ function createTab(url) {
     persistTabs();
   });
   webview.addEventListener('did-stop-loading', updateNavButtons);
-  webview.addEventListener('new-window', (e) => {
-    e.preventDefault();
-    createTab(e.url);
-  });
 
-  setActiveTab(id);
-  persistTabs();
+  if (!opts.silent) {
+    setActiveTab(id);
+    persistTabs();
+  }
   return tab;
 }
 
@@ -117,7 +173,7 @@ function persistTabs() {
   // (newtab.html then lives inside app.asar). Store the bare relative name
   // instead so it resolves correctly either way.
   const urls = tabs.map((t) => {
-    const url = t.webview.getURL() || t.webview.getAttribute('src') || 'newtab.html';
+    const url = currentUrlOf(t);
     return isNewTabUrl(url) ? 'newtab.html' : url;
   });
   window.tabStore?.save(urls);
@@ -131,11 +187,18 @@ function setActiveTab(id) {
     t.tabEl.classList.toggle('active', isActive);
   });
   const tab = tabs.find((t) => t.id === id);
-  if (tab) {
-    const url = tab.webview.getURL() || '';
-    addressInput.value = isNewTabUrl(url) ? '' : url;
-    updateNavButtons();
+  if (!tab) return;
+
+  // First look at a deferred tab is when it actually loads.
+  if (tab.pendingUrl) {
+    const target = tab.pendingUrl;
+    tab.pendingUrl = null;
+    tab.webview.setAttribute('src', target);
   }
+
+  const url = currentUrlOf(tab);
+  addressInput.value = isNewTabUrl(url) ? '' : url;
+  updateNavButtons();
 }
 
 function closeTab(id) {
@@ -186,7 +249,11 @@ reloadBtn.addEventListener('click', () => activeTab()?.webview.reload());
 
 document.getElementById('new-tab-btn').addEventListener('click', () => createTab());
 
-// ---------- Sidebar: Gmail / Calendar / Drive ----------
+// Anything that asked for a new window and wasn't allowed to open one (see
+// POPUP_ALLOWLIST in main.js) arrives here instead and becomes a tab.
+window.tabStore?.onOpenUrl?.((url) => createTab(url));
+
+// ---------- Sidebar ----------
 
 const sidebar = document.getElementById('sidebar');
 const sbTabs = document.querySelectorAll('.sbtab');
@@ -198,43 +265,49 @@ const sbPanels = {
   assistant: document.getElementById('panel-assistant')
 };
 
-// ---------- Sidebar sizing: width and per-app zoom, both remembered ----------
-
-// Each app wants a different amount of room. Gmail, Calendar and Drive pick
-// their layout from browser identity rather than the width they actually
-// have, so they lay out a full desktop UI and need zooming out to fit it;
-// YouTube and Claude are genuinely responsive and read fine at 100%. These
-// are only starting points -- drag the sidebar's left edge to resize it, use
-// the zoom controls underneath to retune any app, and both are remembered.
-const DEFAULT_ZOOM = { gmail: 0.8, calendar: 0.8, drive: 0.8, youtube: 1, assistant: 1 };
+const DEFAULT_LAYOUT = {
+  gmail: 'phone',
+  calendar: 'phone',
+  drive: 'phone',
+  youtube: 'desktop',
+  assistant: 'desktop'
+};
+// The phone layout is sized for a narrow column already, so it wants no
+// zooming out at all -- that was only ever a workaround for the desktop
+// layout not fitting.
+const DEFAULT_ZOOM = { gmail: 1, calendar: 1, drive: 1, youtube: 1, assistant: 1 };
 const DEFAULT_WIDTH = 460;
 const MIN_WIDTH = 300;
 const MAX_WIDTH = 1000;
 
-function readPref(key, fallback) {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw === null ? fallback : JSON.parse(raw);
-  } catch (err) {
-    return fallback;
-  }
-}
-
-function writePref(key, value) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch (err) {
-    // Losing a saved preference shouldn't take the sidebar down with it.
-  }
-}
-
 const zoomLabel = document.getElementById('zoom-label');
+const layoutBtn = document.getElementById('layout-toggle');
 const dragShield = document.getElementById('drag-shield');
 const resizeHandle = document.getElementById('sidebar-resize');
 
+const layoutByApp = Object.assign({}, DEFAULT_LAYOUT, readPref('sidebarLayout', {}));
 const zoomByApp = Object.assign({}, DEFAULT_ZOOM, readPref('sidebarZoom', {}));
+const panelLoaded = {};
 let currentApp = 'gmail';
 let sidebarWidth = DEFAULT_WIDTH;
+
+function uaFor(name) {
+  return layoutByApp[name] === 'phone' ? MOBILE_UA : CHROME_UA;
+}
+
+// Panels are empty until first opened. Loading all five Google apps at
+// launch was the largest single cost in starting the browser.
+function ensurePanelLoaded(name) {
+  if (panelLoaded[name]) return;
+  const wv = sbPanels[name];
+  if (!wv || !wv.dataset.src) return;
+  panelLoaded[name] = true;
+  wv.setAttribute('useragent', uaFor(name));
+  allowPopups(wv);
+  hardenAgainstDetection(wv);
+  wv.addEventListener('dom-ready', () => applyZoom(name));
+  wv.setAttribute('src', wv.dataset.src);
+}
 
 function applyWidth(px) {
   sidebarWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(px)));
@@ -257,14 +330,30 @@ function setZoom(name, factor) {
   applyZoom(name);
 }
 
-applyWidth(readPref('sidebarWidth', DEFAULT_WIDTH));
+function updateLayoutButton() {
+  layoutBtn.textContent = layoutByApp[currentApp] === 'phone' ? 'Phone' : 'Desktop';
+}
 
-Object.entries(sbPanels).forEach(([name, wv]) => {
-  allowPopups(wv);
-  hardenAgainstDetection(wv);
-  // Navigating inside a panel resets its zoom, so reapply on every load.
-  wv.addEventListener('dom-ready', () => applyZoom(name));
-});
+function setLayout(name, mode) {
+  layoutByApp[name] = mode;
+  writePref('sidebarLayout', layoutByApp);
+  const wv = sbPanels[name];
+  if (panelLoaded[name]) {
+    // The user-agent is read at request time, so the panel has to go back
+    // to the network for the new layout to take effect.
+    try {
+      wv.setUserAgent(uaFor(name));
+      wv.reload();
+    } catch (err) {
+      // Panel not ready; the attribute below covers it.
+    }
+  }
+  wv.setAttribute('useragent', uaFor(name));
+  updateLayoutButton();
+}
+
+applyWidth(readPref('sidebarWidth', DEFAULT_WIDTH));
+updateLayoutButton();
 
 document.getElementById('zoom-in').addEventListener('click', () => {
   setZoom(currentApp, (zoomByApp[currentApp] || 1) + 0.05);
@@ -274,6 +363,9 @@ document.getElementById('zoom-out').addEventListener('click', () => {
 });
 zoomLabel.addEventListener('click', () => {
   setZoom(currentApp, DEFAULT_ZOOM[currentApp] || 1);
+});
+layoutBtn.addEventListener('click', () => {
+  setLayout(currentApp, layoutByApp[currentApp] === 'phone' ? 'desktop' : 'phone');
 });
 
 // Dragging the sidebar's edge. Each <webview> is its own renderer and
@@ -307,7 +399,9 @@ sbTabs.forEach((el) => {
     Object.entries(sbPanels).forEach(([name, wv]) => {
       wv.classList.toggle('active', name === app);
     });
+    ensurePanelLoaded(app);
     applyZoom(app);
+    updateLayoutButton();
   });
 });
 
@@ -335,8 +429,20 @@ window.addEventListener('keydown', (e) => {
   }
 
   if (Array.isArray(saved) && saved.length > 0) {
-    saved.forEach((url) => createTab(isNewTabUrl(url) ? 'newtab.html' : url));
+    // Only the tab you were last looking at loads now; the rest fill in
+    // when you click them.
+    saved.forEach((url, i) => {
+      const clean = isNewTabUrl(url) ? 'newtab.html' : url;
+      createTab(clean, { defer: i !== 0, silent: true });
+    });
+    setActiveTab(tabs[0].id);
+    persistTabs();
   } else {
     createTab('newtab.html');
   }
+
+  // The sidebar's first panel waits for the shell to go idle, so it never
+  // competes with the page you actually opened the browser to see.
+  const whenIdle = window.requestIdleCallback || ((fn) => setTimeout(fn, 250));
+  whenIdle(() => ensurePanelLoaded(currentApp));
 })();

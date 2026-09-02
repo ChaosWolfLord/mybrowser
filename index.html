@@ -2,6 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; form-action 'none'; base-uri 'none'; frame-src *">
 <title>My Browser</title>
 <link rel="stylesheet" href="styles.css">
 </head>
@@ -57,13 +58,15 @@
         </div>
       </div>
       <div class="sidebar-panels" id="sidebar-panels">
-        <webview id="panel-gmail" class="active" src="https://mail.google.com" partition="persist:main" useragent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"></webview>
-        <webview id="panel-calendar" src="https://calendar.google.com" partition="persist:main" useragent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"></webview>
-        <webview id="panel-drive" src="https://drive.google.com" partition="persist:main" useragent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"></webview>
-        <webview id="panel-youtube" src="https://www.youtube.com" partition="persist:main" useragent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"></webview>
-        <webview id="panel-assistant" src="https://claude.ai" partition="persist:main" useragent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"></webview>
+        <webview id="panel-gmail" class="active" data-src="https://mail.google.com" partition="persist:main"></webview>
+        <webview id="panel-calendar" data-src="https://calendar.google.com" partition="persist:main"></webview>
+        <webview id="panel-drive" data-src="https://drive.google.com" partition="persist:main"></webview>
+        <webview id="panel-youtube" data-src="https://www.youtube.com" partition="persist:main"></webview>
+        <webview id="panel-assistant" data-src="https://claude.ai" partition="persist:main"></webview>
       </div>
       <div class="sidebar-foot">
+        <button class="layoutbtn" id="layout-toggle" title="Switch between phone and desktop layout">Phone</button>
+        <span class="footspacer"></span>
         <button class="zoombtn" id="zoom-out" title="Zoom out">&#8722;</button>
         <span class="zoomlabel" id="zoom-label" title="Click to reset">100%</span>
         <button class="zoombtn" id="zoom-in" title="Zoom in">+</button>

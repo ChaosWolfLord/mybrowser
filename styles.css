@@ -221,6 +221,22 @@ html, body {
 }
 .zoomlabel:hover { color: #EDE4D8; }
 
+/* Phone/Desktop layout switch for the current sidebar app. */
+.layoutbtn {
+  height: 22px;
+  padding: 0 9px;
+  border: 1px solid rgba(237,228,216,0.14);
+  border-radius: 5px;
+  background: transparent;
+  color: #9C948A;
+  cursor: pointer;
+  font-size: 10.5px;
+  font-family: inherit;
+  letter-spacing: 0.02em;
+}
+.layoutbtn:hover { background: rgba(237,228,216,0.08); color: #EDE4D8; }
+.footspacer { flex: 1; }
+
 .sidebar-tabs {
   display: flex;
   padding: 10px 10px 0 10px;

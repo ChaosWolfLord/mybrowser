@@ -100,20 +100,55 @@ in the background so switching is instant:
 | Play | YouTube | brick `#B85C4A` |
 | Star | Claude | violet `#8B7EC8` |
 
-**Sizing it to taste:** drag the sidebar's left edge to make it wider or
-narrower, and use the zoom controls in the bottom-right corner to scale the
-app inside it. Zoom is tracked per app, so Gmail can sit at 80% while Claude
-stays at 100%, and clicking the percentage resets that app to its default.
-Both the width and the zoom levels are remembered between restarts.
+**Phone or desktop layout:** the button at the bottom-left of the sidebar
+switches the current app between the two, and remembers your choice per app.
 
-Gmail, Calendar and Drive default to 80% because they decide between their
-desktop and mobile layouts based on browser identity rather than the width
-they actually have -- so in a narrow panel they still lay out a full desktop
-UI, and zooming out is what gives them the room to fit it.
+Gmail, Calendar and Drive default to **Phone**. They pick their layout from
+what the browser claims to be rather than from the width they actually have,
+so when told they are on a desktop they lay out a full desktop UI and spill
+out of a narrow panel -- and zooming out doesn't reflow that, it only makes
+the text smaller. Told they are on a phone, they serve the responsive layout
+that is built for a narrow column. YouTube and Claude are responsive already
+and default to **Desktop**. If one of them looks wrong, toggle it and see.
+
+**Sizing it to taste:** drag the sidebar's left edge to make it wider or
+narrower, and use the zoom controls at the bottom-right to scale the app
+inside it. Zoom is tracked per app, and clicking the percentage resets that
+app. Width, zoom and layout all persist between restarts.
 
 **Want ChatGPT instead of Claude?** In `index.html`, find the line with
 `id="panel-assistant"` and change `src="https://claude.ai"` to
 `src="https://chatgpt.com"`. That's the entire change.
+
+## Privacy and security
+
+The browser blocks third-party tracking and ad hosts at the network layer
+before the request leaves your machine. That is a privacy measure first, but
+it is also the biggest single speed-up available -- on most pages a large
+share of the loading time is other people's analytics. The list lives in
+`BLOCKED_HOSTS` in `main.js`; trim it if a site you need misbehaves. Google's
+own app domains are deliberately not on it, so Gmail and friends are
+unaffected.
+
+Also on by default:
+
+- Plain `http://` pages are upgraded to `https://` (loopback exempt, for
+  local dev servers).
+- Site permissions default to **deny**. Only notifications and clipboard are
+  allowed; geolocation, camera, microphone and the rest are refused without
+  ever prompting you.
+- Bad HTTPS certificates are never bypassed.
+- Popups are blocked except for Google's sign-in window. Anything else that
+  tries to open a window becomes an ordinary tab instead.
+- Pages run with no access to Node, in a sandboxed renderer with context
+  isolation, and cannot attach privileged webviews of their own.
+
+## Startup speed
+
+The sidebar's five apps no longer all load at launch -- each loads the first
+time you open it, and the one showing at startup waits until the shell is
+idle. Restored tabs work the same way: only the tab you were last looking at
+loads immediately, the rest load when you click them.
 
 ## Customizing further
 
