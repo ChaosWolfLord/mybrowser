@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; form-action 'none'; base-uri 'none'; frame-src *">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; form-action 'none'; base-uri 'none'; frame-src *">
 <title>My Browser</title>
 <link rel="stylesheet" href="styles.css">
 </head>
@@ -23,10 +23,18 @@
     <div class="addressbar">
       <svg class="lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg>
       <input id="address-input" type="text" placeholder="Search Google or type a URL" spellcheck="false">
+      <div class="suggest" id="suggest"></div>
     </div>
 
     <button class="newtabbtn" id="new-tab-btn" title="New tab">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+    <button class="navbtn" id="menu-btn" title="Menu">
+      <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
+    </button>
+    <button class="navbtn" id="downloads-btn" title="Downloads (Ctrl+J)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg>
+      <span class="dot" id="downloads-dot"></span>
     </button>
     <button class="sidebar-toggle" id="sidebar-toggle-btn" title="Toggle Google panel">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg>
@@ -36,7 +44,39 @@
   <div class="tabstrip" id="tabstrip"></div>
 
   <div class="body">
-    <div class="browser-pane" id="webview-container"></div>
+    <div class="browser-pane" id="webview-container">
+      <div class="findbar" id="findbar">
+        <input id="find-input" type="text" placeholder="Find in page" spellcheck="false">
+        <span class="findcount" id="find-count"></span>
+        <button class="findbtn" id="find-prev" title="Previous (Shift+Enter)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 15l-6-6-6 6"/></svg>
+        </button>
+        <button class="findbtn" id="find-next" title="Next (Enter)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <button class="findbtn" id="find-close" title="Close (Esc)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <div class="overlay" id="history-overlay">
+        <div class="overlay-head">
+          <span class="overlay-title">History</span>
+          <input id="history-search" type="text" placeholder="Search history" spellcheck="false">
+          <button class="overlay-btn" id="history-clear">Clear all</button>
+          <button class="overlay-btn" id="history-close">Close</button>
+        </div>
+        <div class="overlay-list" id="history-list"></div>
+      </div>
+      <div class="overlay" id="downloads-overlay">
+        <div class="overlay-head">
+          <span class="overlay-title">Downloads</span>
+          <span class="overlay-spacer"></span>
+          <button class="overlay-btn" id="downloads-clear">Clear finished</button>
+          <button class="overlay-btn" id="downloads-close">Close</button>
+        </div>
+        <div class="overlay-list" id="downloads-list"></div>
+      </div>
+    </div>
 
     <div class="sidebar" id="sidebar">
       <div class="sidebar-resize" id="sidebar-resize" title="Drag to resize"></div>
@@ -65,7 +105,6 @@
         <webview id="panel-assistant" data-src="https://claude.ai" partition="persist:main"></webview>
       </div>
       <div class="sidebar-foot">
-        <button class="layoutbtn" id="layout-toggle" title="Switch between phone and desktop layout">Phone</button>
         <span class="footspacer"></span>
         <button class="zoombtn" id="zoom-out" title="Zoom out">&#8722;</button>
         <span class="zoomlabel" id="zoom-label" title="Click to reset">100%</span>

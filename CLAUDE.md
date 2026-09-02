@@ -27,14 +27,28 @@ single Google sign-in covers all five sidebar apps plus regular tabs.
 
 ## Things that will bite you
 
-- **Zoom cannot fix the Google apps' layout.** Gmail, Calendar and Drive
-  choose desktop vs mobile from the *user-agent*, not the width they have.
-  On the desktop string they lay out a full desktop UI and overflow a
-  narrow panel; zooming out only shrinks the text, it doesn't reflow
-  anything. They are given `MOBILE_UA` so Google serves the responsive
-  layout. YouTube and Claude are genuinely responsive and keep the desktop
-  string. The footer toggle flips this per app, and changing it must
-  `reload()` -- the UA is read at request time.
+- **Never hardcode a Chrome version in the user-agent.** A pinned
+  `Chrome/128` silently became years out of date, and Google serves Gmail
+  and Calendar a cut-down *legacy* interface to any browser it thinks is
+  old. That presented as "the sidebar is running an older Gmail" and no
+  amount of layout fiddling touched it, because it was never a layout
+  problem. Both UA strings are now built from the running engine
+  (`process.versions.chrome` in main, parsed off `navigator.userAgent` in
+  the renderer). Keeping Electron current is therefore a functional
+  requirement, not hygiene. Claiming a *newer* version than the engine
+  would be worse than claiming an old one -- Google would serve code the
+  engine cannot run.
+- **Gmail and Calendar are scaled, not reflowed.** Their desktop layout is
+  fixed-width and ignores the space available, so `FIT_TARGETS` records the
+  width each one needs and the panel zoom is derived from
+  `sidebarWidth / target` on every resize, throttled to one pass per
+  animation frame. `zoomOverride` holds a manual setting per app; absent
+  means "fit automatically". Drive, YouTube and Claude are responsive and
+  are absent from `FIT_TARGETS`, so they stay at 100%.
+- **Panel interfaces are fixed in `PANEL_UA`, with no UI to change them.**
+  Drive is the one on the phone string, because its mobile layout genuinely
+  suits a narrow column. There used to be a Phone/Desktop button; it was
+  removed once the real cause was the stale version, not the layout.
 - **CSP must keep `'unsafe-inline'` in `style-src`.** Electron's `<webview>`
   applies inline styles to size itself; a strict `style-src 'self'` makes
   Chromium refuse them and the panels mis-size. `script-src` stays strict.
@@ -44,6 +58,9 @@ single Google sign-in covers all five sidebar apps plus regular tabs.
   fixed overlay) switched on for its duration.
 - **Zoom resets on navigation.** `setZoomFactor` does not survive a panel
   navigating, so it is reapplied on every `dom-ready`.
+- **Electron is on 44 (Chromium 152).** The jump from 31 came with
+  `canGoBack()` being replaced by `navigationHistory`; the `canGo` helper in
+  `main.js` handles both, so don't "simplify" it back.
 - **Never persist resolved `file://` URLs.** `newtab.html` resolves to a
   real folder path in dev and to a path inside `app.asar` when packaged.
   Normalise to the bare relative name via `isNewTabUrl()` before saving.
@@ -58,6 +75,36 @@ single Google sign-in covers all five sidebar apps plus regular tabs.
   **Gmail** panel to seed the session for the other four.
 - **Preferences live in renderer `localStorage`** (sidebar width, per-app
   zoom, per-app layout). Tabs go over IPC to `tabs.json` in userData.
+
+## Where things live
+
+- **History** is main-process state (`history` array, `history.json`), held
+  in memory and flushed on a 15s timer plus on quit -- a navigation must
+  never trigger a whole-file write. `addHistory` deliberately does not count
+  a second visit within 5s of the first, because a page is recorded twice:
+  once on `did-navigate` and again when its title arrives.
+- **Downloads** are main-process state too, and are *not* persisted; the
+  renderer gets the whole list pushed on every change via `downloads-changed`.
+- **Preferences** (sidebar width, per-app zoom and layout, per-site page
+  zoom) are renderer `localStorage`, which lives in the *default* session,
+  not `persist:main`. This is why clearing the browsing session does not
+  wipe preferences -- keep it that way.
+- **Sessions**: every webview is on `persist:main`, at
+  `<userData>/Partitions/main`. Clearing that is the "sign out everywhere"
+  operation and signs out Claude and YouTube along with Google.
+
+## Keyboard shortcuts are not what they look like
+
+A key pressed while a `<webview>` has focus never reaches the shell window,
+so a plain `keydown` listener would only fire when focus happened to be in
+the chrome. `main.js` hooks `before-input-event` on every webview, swallows
+the keys we claim, and replays them to the renderer as named actions on the
+`shortcut` channel. The renderer has one `SHORTCUTS` map that both routes
+feed. **Adding a shortcut means editing both ends** -- the matcher in
+`main.js` and the map in `renderer.js` -- or it will work in the chrome and
+mysteriously not in a page.
+
+`Escape` is forwarded but deliberately not swallowed, since pages use it.
 
 ## Startup
 

@@ -20,6 +20,8 @@ html, body {
 
 .titlebar {
   -webkit-app-region: drag;
+  position: relative;
+  z-index: 50;   /* so the suggestion dropdown paints over the pages below */
   display: flex;
   align-items: center;
   gap: 10px;
@@ -47,6 +49,7 @@ html, body {
 
 .addressbar {
   -webkit-app-region: no-drag;
+  position: relative;
   flex: 1;
   display: flex;
   align-items: center;
@@ -117,6 +120,14 @@ html, body {
   color: #EDE4D8;
   border-bottom: 2px solid #C98A3E;
 }
+.tab .favicon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  display: none;
+}
+.tab .favicon.shown { display: block; }
 .tab .title { overflow: hidden; text-overflow: ellipsis; flex: 1; }
 .tab .closebtn {
   width: 16px; height: 16px;
@@ -151,6 +162,230 @@ html, body {
   display: none;
 }
 .browser-pane webview.active { display: flex; }
+
+/* ---------- Find in page ---------- */
+
+.findbar {
+  position: absolute;
+  top: 10px;
+  right: 16px;
+  z-index: 20;
+  display: none;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 6px 6px 12px;
+  background: #262220;
+  border: 1px solid rgba(237,228,216,0.14);
+  border-radius: 9px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.35);
+}
+.findbar.open { display: flex; }
+.findbar input {
+  width: 190px;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #EDE4D8;
+  font-size: 13px;
+  font-family: inherit;
+}
+.findcount {
+  min-width: 52px;
+  text-align: right;
+  color: #6E6862;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.findcount.none { color: #B85C4A; }
+.findbtn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: #9C948A;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.findbtn:hover { background: rgba(237,228,216,0.1); color: #EDE4D8; }
+.findbtn svg { width: 13px; height: 13px; }
+
+/* ---------- Address bar suggestions ---------- */
+
+.suggest {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: -1px;
+  right: -1px;
+  display: none;
+  flex-direction: column;
+  padding: 4px;
+  background: #262220;
+  border: 1px solid rgba(237,228,216,0.14);
+  border-radius: 9px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+  max-height: 340px;
+  overflow-y: auto;
+}
+.suggest.open { display: flex; }
+.suggest-row {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.suggest-row.sel { background: rgba(201,138,62,0.16); }
+.suggest-title {
+  color: #EDE4D8;
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.suggest-url {
+  color: #6E6862;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- History overlay ---------- */
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: none;
+  flex-direction: column;
+  background: #1E1B18;
+}
+.overlay.open { display: flex; }
+.overlay-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(237,228,216,0.08);
+}
+.overlay-title {
+  font-size: 14px;
+  color: #EDE4D8;
+  margin-right: 4px;
+}
+.overlay-head input {
+  flex: 1;
+  height: 30px;
+  padding: 0 11px;
+  background: #262220;
+  border: 1px solid rgba(237,228,216,0.1);
+  border-radius: 7px;
+  color: #EDE4D8;
+  font-size: 12.5px;
+  font-family: inherit;
+  outline: none;
+}
+.overlay-head input:focus { border-color: #C98A3E; }
+.overlay-btn {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid rgba(237,228,216,0.14);
+  border-radius: 7px;
+  background: transparent;
+  color: #9C948A;
+  cursor: pointer;
+  font-size: 11.5px;
+  font-family: inherit;
+}
+.overlay-btn:hover { background: rgba(237,228,216,0.08); color: #EDE4D8; }
+.overlay-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 12px 16px 12px;
+}
+.hist-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.hist-row:hover { background: rgba(237,228,216,0.06); }
+.hist-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.hist-title {
+  color: #EDE4D8;
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hist-url {
+  color: #6E6862;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hist-when { color: #6E6862; font-size: 11px; flex-shrink: 0; }
+.hist-del {
+  width: 22px; height: 22px;
+  border: none; border-radius: 5px;
+  background: transparent; color: #6E6862;
+  cursor: pointer; flex-shrink: 0;
+  font-size: 14px; line-height: 1; padding: 0;
+}
+.hist-del:hover { background: rgba(184,92,74,0.2); color: #B85C4A; }
+.hist-empty { color: #6E6862; font-size: 12.5px; padding: 24px 10px; text-align: center; }
+.overlay-spacer { flex: 1; }
+
+/* ---------- Downloads ---------- */
+
+#downloads-btn { position: relative; }
+.dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #C98A3E;
+  display: none;
+}
+.dot.on { display: block; }
+
+.dl-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 7px;
+}
+.dl-row:hover { background: rgba(237,228,216,0.06); }
+.dl-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.dl-name {
+  color: #EDE4D8;
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dl-sub { color: #6E6862; font-size: 11px; }
+.dl-sub.failed { color: #B85C4A; }
+.dl-bar {
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(237,228,216,0.1);
+  overflow: hidden;
+  margin-top: 2px;
+}
+.dl-fill { height: 100%; background: #C98A3E; width: 0; }
+.dl-risky { color: #C98A3E; }
 
 /* ---------- Sidebar: Gmail / Calendar / Drive, always mounted ---------- */
 
@@ -221,21 +456,9 @@ html, body {
 }
 .zoomlabel:hover { color: #EDE4D8; }
 
-/* Phone/Desktop layout switch for the current sidebar app. */
-.layoutbtn {
-  height: 22px;
-  padding: 0 9px;
-  border: 1px solid rgba(237,228,216,0.14);
-  border-radius: 5px;
-  background: transparent;
-  color: #9C948A;
-  cursor: pointer;
-  font-size: 10.5px;
-  font-family: inherit;
-  letter-spacing: 0.02em;
-}
-.layoutbtn:hover { background: rgba(237,228,216,0.08); color: #EDE4D8; }
 .footspacer { flex: 1; }
+/* Dimmed while the zoom is following the panel width by itself. */
+.zoomlabel.auto { opacity: 0.55; }
 
 .sidebar-tabs {
   display: flex;

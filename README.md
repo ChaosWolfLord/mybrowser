@@ -100,25 +100,79 @@ in the background so switching is instant:
 | Play | YouTube | brick `#B85C4A` |
 | Star | Claude | violet `#8B7EC8` |
 
-**Phone or desktop layout:** the button at the bottom-left of the sidebar
-switches the current app between the two, and remembers your choice per app.
+**Fitting the panel:** Gmail and Calendar lay out a fixed-width desktop
+interface that does not reflow, so they are scaled to whatever width the
+sidebar currently is. Drag the sidebar's edge and they rescale with it, live.
+Drive, YouTube and Claude are responsive on their own and sit at 100%.
 
-Gmail, Calendar and Drive default to **Phone**. They pick their layout from
-what the browser claims to be rather than from the width they actually have,
-so when told they are on a desktop they lay out a full desktop UI and spill
-out of a narrow panel -- and zooming out doesn't reflow that, it only makes
-the text smaller. Told they are on a phone, they serve the responsive layout
-that is built for a narrow column. YouTube and Claude are responsive already
-and default to **Desktop**. If one of them looks wrong, toggle it and see.
+The percentage at the bottom-right shows the current scale, dimmed while it
+is being worked out automatically. The `-` and `+` buttons override it for
+that app if you would rather set it yourself; clicking the percentage hands
+control back to the automatic fit.
 
-**Sizing it to taste:** drag the sidebar's left edge to make it wider or
-narrower, and use the zoom controls at the bottom-right to scale the app
-inside it. Zoom is tracked per app, and clicking the percentage resets that
-app. Width, zoom and layout all persist between restarts.
+There is a floor of 35% -- past that the text stops being readable, and the
+answer is a wider sidebar rather than a smaller Gmail.
 
 **Want ChatGPT instead of Claude?** In `index.html`, find the line with
 `id="panel-assistant"` and change `src="https://claude.ai"` to
 `src="https://chatgpt.com"`. That's the entire change.
+
+## Keyboard shortcuts
+
+| Keys | Does |
+|---|---|
+| `Ctrl+T` / `Ctrl+W` | New tab / close tab |
+| `Ctrl+Shift+T` | Reopen the tab you just closed |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous tab |
+| `Ctrl+L` | Jump to the address bar |
+| `Ctrl+F` | Find in page (`Enter` next, `Shift+Enter` back, `Esc` closes) |
+| `Ctrl+H` / `Ctrl+J` | History / downloads |
+| `Ctrl+` `+` / `-` / `0` | Zoom the page in, out, or back to 100% |
+
+Page zoom is remembered per site, so a site you always squint at stays
+zoomed the next time you open it.
+
+Middle-click a tab to close it. Right-click anywhere in a page for the
+usual menu: open link in new tab, copy link, copy image, search the
+selection, back, reload, inspect.
+
+## History and the address bar
+
+Every page you visit is recorded, and the address bar suggests from that
+history as you type. Matching the *start of a hostname* is what ranks
+highest, so typing `gi` offers github.com rather than some page with "gi"
+buried in its title. Arrow keys walk the list, `Enter` takes the highlighted
+one, `Esc` dismisses it.
+
+`Ctrl+H` opens the full history: searchable, with a delete button on each
+row and a Clear all. It holds the last 5000 pages and is written to
+`history.json` in the app's data folder.
+
+## Downloads
+
+Files save straight to your Downloads folder, the way any browser does, and
+`Ctrl+J` shows them with live progress, Open, and Show-in-folder. Nothing is
+ever overwritten -- a second copy of the same file becomes `name (1).ext`.
+
+Executables are treated differently on purpose. A `.exe`, `.msi`, `.bat`,
+`.ps1` and friends will not launch from inside the browser; the Open button
+becomes Show, which reveals the file in Explorer. Running one stays a
+deliberate act outside the browser rather than one click inside it.
+
+## The menu
+
+The three-dot button in the toolbar holds history, downloads, and the
+clearing controls:
+
+- **Sign out of all sites** -- removes cookies and logins. Because all five
+  sidebar panels deliberately share one session (that is what makes a single
+  Google sign-in cover everything), this signs you out of Claude and YouTube
+  as well, not only Google. Your history, tabs and preferences survive it,
+  and nothing changes on the accounts themselves. Use this if you sign in
+  with the wrong account.
+- **Clear cache** -- frees space, keeps you signed in.
+- **Clear browsing history** -- empties the list and the address bar's
+  suggestions.
 
 ## Privacy and security
 
