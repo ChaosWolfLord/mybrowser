@@ -57,18 +57,32 @@ const BLOCKED_HOSTS = [
   'branch.io', 'appsflyer.com', 'adsrvr.org', 'casalemedia.com'
 ];
 
+// This runs for every single request the browser makes -- a busy page is
+// hundreds of them -- so it has to stay cheap. `new URL()` was doing a full
+// parse per request just to read the host; a regex is enough.
 function hostOf(url) {
-  try {
-    return new URL(url).hostname.toLowerCase();
-  } catch (err) {
-    return '';
-  }
+  // The (?:...@)? skips any user:pass@ before the host. Without it a
+  // tracker evades the blocklist just by embedding userinfo in the URL.
+  const m = /^[a-z][a-z0-9+.-]*:\/\/(?:[^/?#]*@)?([^/:?#]+)/i.exec(url);
+  return m ? m[1].toLowerCase() : '';
 }
+
+// Verdicts are cached per host: a page pulls repeatedly from the same
+// handful of domains, so the list scan should happen once each, not once
+// per request.
+const trackerVerdicts = new Map();
 
 function isTracker(url) {
   const host = hostOf(url);
   if (!host) return false;
-  return BLOCKED_HOSTS.some((bad) => host === bad || host.endsWith('.' + bad));
+
+  let verdict = trackerVerdicts.get(host);
+  if (verdict === undefined) {
+    verdict = BLOCKED_HOSTS.some((bad) => host === bad || host.endsWith('.' + bad));
+    if (trackerVerdicts.size > 5000) trackerVerdicts.clear();
+    trackerVerdicts.set(host, verdict);
+  }
+  return verdict;
 }
 
 // Plain http:// is upgraded to https:// for top-level navigation. Loopback
