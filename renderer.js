@@ -899,14 +899,28 @@ sbTabs.forEach((el) => {
     Object.entries(sbPanels).forEach(([name, wv]) => {
       wv.classList.toggle('active', name === app);
     });
+    // Picking an app out of the collapsed rail should open it, not just
+    // highlight something you cannot see.
+    if (sidebar.classList.contains('collapsed')) setSidebarCollapsed(false);
     ensurePanelLoaded(app);
     applyZoom(app);
   });
 });
 
-document.getElementById('sidebar-toggle-btn').addEventListener('click', () => {
-  sidebar.classList.toggle('collapsed');
-});
+function setSidebarCollapsed(collapsed) {
+  sidebar.classList.toggle('collapsed', collapsed);
+  writePref('sidebarCollapsed', collapsed);
+  // Width changed, so anything being fitted to it needs recomputing.
+  if (!collapsed) refitPanels();
+}
+
+function toggleSidebar() {
+  setSidebarCollapsed(!sidebar.classList.contains('collapsed'));
+}
+
+document.getElementById('sidebar-collapse').addEventListener('click', toggleSidebar);
+document.getElementById('sidebar-toggle-btn').addEventListener('click', toggleSidebar);
+setSidebarCollapsed(readPref('sidebarCollapsed', false));
 
 // ---------- Keyboard shortcuts ----------
 
