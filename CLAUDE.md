@@ -49,6 +49,15 @@ single Google sign-in covers all five sidebar apps plus regular tabs.
   Drive is the one on the phone string, because its mobile layout genuinely
   suits a narrow column. There used to be a Phone/Desktop button; it was
   removed once the real cause was the stale version, not the layout.
+- **A new source file must be added to `build.files` in `package.json`.**
+  That array is an allowlist, not a hint: a file missing from it simply will
+  not exist in the packaged app, and the failure only shows up in a build,
+  never in `npm start`. `newtab.js` is listed there.
+- **`newtab.html` runs its own script under `script-src 'self'`,** which does
+  resolve for `file://` here (verified, not assumed). Its CSP previously said
+  `form-action 'none'`, which silently stopped the page's own search box from
+  submitting -- it now names Google explicitly. Keep scripts external; there
+  is no `'unsafe-inline'` for script on that page.
 - **CSP must keep `'unsafe-inline'` in `style-src`.** Electron's `<webview>`
   applies inline styles to size itself; a strict `style-src 'self'` makes
   Chromium refuse them and the panels mis-size. `script-src` stays strict.

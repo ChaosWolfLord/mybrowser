@@ -117,6 +117,19 @@ answer is a wider sidebar rather than a smaller Gmail.
 `id="panel-assistant"` and change `src="https://claude.ai"` to
 `src="https://chatgpt.com"`. That's the entire change.
 
+## The new tab page
+
+Three fields of colour in the app's accent hues, blurred past recognition,
+drifting on their own slow cycles -- and they move away from your pointer
+like something viscous. The nearest one shoves hardest, the far ones stir a
+little, and they take their time settling back; that lag is what makes it
+read as liquid rather than parallax. The search box and shortcuts are
+frosted so the colour shows through them.
+
+It costs almost nothing: three composited layers moving on `transform` only,
+the animation stops itself once everything settles, and it holds still
+entirely if you have asked your system to reduce motion.
+
 ## Keyboard shortcuts
 
 | Keys | Does |

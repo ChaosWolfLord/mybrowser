@@ -2,22 +2,89 @@
 <html>
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; form-action 'none'; base-uri 'none'">
+<!-- form-action names Google explicitly: 'none' here silently blocked the
+     search box from submitting at all. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src data:; form-action https://www.google.com; base-uri 'none'">
 <style>
   html, body {
     margin: 0;
     height: 100%;
-    background: #1E1B18;
+    background: #17130F;
     color: #EDE4D8;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
     display: flex;
     align-items: center;
     justify-content: center;
+    overflow: hidden;
   }
-  .wrap { text-align: center; width: 100%; max-width: 520px; }
+
+  /* Three slow-moving colour fields, blurred far past recognition, in the
+     app's own accent hues. Cheap to run: three composited layers moving on
+     transform only, nothing repainting. */
+  .aurora, .grain, .vignette {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+  }
+  .aurora { overflow: hidden; }
+  .aurora .layer {
+    position: absolute;
+    inset: 0;
+    will-change: transform;
+  }
+  .aurora i {
+    position: absolute;
+    display: block;
+    border-radius: 50%;
+    filter: blur(90px);
+    will-change: transform;
+  }
+  .aurora .layer:nth-child(1) i {
+    width: 48vw; height: 48vw; left: -10vw; top: -14vw;
+    background: radial-gradient(circle, rgba(201,138,62,0.60) 0%, rgba(201,138,62,0) 70%);
+    animation: drift1 42s ease-in-out infinite;
+  }
+  .aurora .layer:nth-child(2) i {
+    width: 42vw; height: 42vw; right: -8vw; top: 4vh;
+    background: radial-gradient(circle, rgba(108,154,147,0.50) 0%, rgba(108,154,147,0) 70%);
+    animation: drift2 55s ease-in-out infinite;
+  }
+  .aurora .layer:nth-child(3) i {
+    width: 46vw; height: 46vw; left: 24vw; bottom: -20vw;
+    background: radial-gradient(circle, rgba(139,126,200,0.45) 0%, rgba(139,126,200,0) 70%);
+    animation: drift3 48s ease-in-out infinite;
+  }
+  @keyframes drift1 {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    50%      { transform: translate(7vw, 5vh) scale(1.18); }
+  }
+  @keyframes drift2 {
+    0%, 100% { transform: translate(0, 0) scale(1.1); }
+    50%      { transform: translate(-6vw, 8vh) scale(0.92); }
+  }
+  @keyframes drift3 {
+    0%, 100% { transform: translate(0, 0) scale(0.95); }
+    50%      { transform: translate(5vw, -6vh) scale(1.2); }
+  }
+  /* Anyone who has asked the OS to stop animations gets the still version. */
+  @media (prefers-reduced-motion: reduce) {
+    .aurora i { animation: none; }
+  }
+
+  /* A little film grain stops the blurs banding into visible steps. */
+  .grain {
+    opacity: 0.05;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .vignette {
+    background: radial-gradient(125% 105% at 50% 42%, rgba(0,0,0,0) 38%, rgba(0,0,0,0.62) 100%);
+  }
+
+  .wrap { position: relative; z-index: 1; text-align: center; width: 100%; max-width: 520px; }
   .mark {
     font-size: 15px;
-    color: #9C948A;
+    color: #B3A99D;
     margin-bottom: 28px;
     letter-spacing: 0.01em;
   }
@@ -25,17 +92,25 @@
     display: flex;
     margin-bottom: 36px;
   }
+  /* Frosted rather than solid, so the colour behind reads through. */
   input[type="text"] {
     flex: 1;
-    background: #262220;
-    border: 1px solid rgba(237,228,216,0.12);
+    background: rgba(30,26,23,0.55);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(237,228,216,0.14);
     color: #EDE4D8;
     font-size: 15px;
-    padding: 12px 16px;
-    border-radius: 8px;
+    padding: 13px 16px;
+    border-radius: 11px;
     outline: none;
+    box-shadow: 0 8px 26px rgba(0,0,0,0.34);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
-  input[type="text"]:focus { border-color: #C98A3E; }
+  input[type="text"]::placeholder { color: #8D857C; }
+  input[type="text"]:focus {
+    border-color: rgba(201,138,62,0.7);
+    box-shadow: 0 8px 26px rgba(0,0,0,0.34), 0 0 0 3px rgba(201,138,62,0.16);
+  }
   .links {
     display: flex;
     gap: 12px;
@@ -47,19 +122,34 @@
     align-items: center;
     gap: 8px;
     padding: 16px 20px;
-    border-radius: 10px;
+    border-radius: 12px;
     text-decoration: none;
     color: #EDE4D8;
     font-size: 13px;
-    background: #262220;
-    border: 1px solid rgba(237,228,216,0.08);
+    background: rgba(30,26,23,0.5);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(237,228,216,0.1);
     width: 84px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.28);
+    transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
   }
-  a.link:hover { border-color: rgba(237,228,216,0.24); }
+  a.link:hover {
+    transform: translateY(-2px);
+    border-color: rgba(237,228,216,0.26);
+    background: rgba(44,38,34,0.6);
+  }
   svg { width: 22px; height: 22px; }
 </style>
 </head>
 <body>
+  <div class="aurora" aria-hidden="true">
+    <span class="layer"><i></i></span>
+    <span class="layer"><i></i></span>
+    <span class="layer"><i></i></span>
+  </div>
+  <div class="grain" aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+
   <div class="wrap">
     <div class="mark">Where to?</div>
     <form action="https://www.google.com/search" method="GET">
@@ -80,5 +170,6 @@
       </a>
     </div>
   </div>
+  <script src="newtab.js"></script>
 </body>
 </html>
