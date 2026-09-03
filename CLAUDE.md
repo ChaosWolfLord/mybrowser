@@ -58,6 +58,18 @@ single Google sign-in covers all five sidebar apps plus regular tabs.
   `form-action 'none'`, which silently stopped the page's own search box from
   submitting -- it now names Google explicitly. Keep scripts external; there
   is no `'unsafe-inline'` for script on that page.
+- **`loadURL` must always be caught.** It rejects with `ERR_ABORTED (-3)`
+  whenever a navigation is superseded -- a redirect, or a second navigation
+  before the first settles. The page still loads; the rejection is noise,
+  but unhandled it surfaces as an alarming `GUEST_VIEW_MANAGER_CALL` stack
+  in the console.
+- **`onBeforeRequest` runs on every single request**, so anything added to
+  it is paid hundreds of times per page. It uses a regex for the host and
+  caches the verdict per host rather than calling `new URL()` and rescanning
+  `BLOCKED_HOSTS` each time (~4x faster on a realistic mix). If you touch
+  `hostOf`, keep the `(?:[^/?#]*@)?` that skips userinfo: without it
+  `https://user:pass@tracker.example/` reads as host `user` and walks
+  straight through the blocklist.
 - **CSP must keep `'unsafe-inline'` in `style-src`.** Electron's `<webview>`
   applies inline styles to size itself; a strict `style-src 'self'` makes
   Chromium refuse them and the panels mis-size. `script-src` stays strict.

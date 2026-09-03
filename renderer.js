@@ -26,6 +26,7 @@ const reloadBtn = document.getElementById('reload-btn');
 const findbar = document.getElementById('findbar');
 const findInput = document.getElementById('find-input');
 const findCount = document.getElementById('find-count');
+const loadbar = document.getElementById('loadbar');
 
 let tabs = [];      // { id, webview, tabEl, titleEl, iconEl, pendingUrl }
 let activeId = null;
@@ -139,7 +140,10 @@ function createTab(url, options) {
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 6l12 12M18 6L6 18"/></svg>';
   const iconEl = document.createElement('img');
   iconEl.className = 'favicon';
+  const spinEl = document.createElement('span');
+  spinEl.className = 'spinner';
   tabEl.appendChild(iconEl);
+  tabEl.appendChild(spinEl);
   tabEl.appendChild(titleEl);
   tabEl.appendChild(closeEl);
   tabstrip.appendChild(tabEl);
@@ -173,7 +177,19 @@ function createTab(url, options) {
     updateNavButtons();
     persistTabs();
   });
-  webview.addEventListener('did-stop-loading', updateNavButtons);
+  webview.addEventListener('did-start-loading', () => {
+    tabEl.classList.add('loading');
+    if (activeId === id) setBusy(true);
+  });
+  webview.addEventListener('did-stop-loading', () => {
+    tabEl.classList.remove('loading');
+    updateNavButtons();
+    if (activeId === id) setBusy(false);
+  });
+  webview.addEventListener('did-fail-load', () => {
+    tabEl.classList.remove('loading');
+    if (activeId === id) setBusy(false);
+  });
   webview.addEventListener('page-favicon-updated', (e) => {
     const icon = e.favicons && e.favicons[0];
     if (!icon) return;
@@ -229,6 +245,7 @@ function setActiveTab(id) {
   const url = currentUrlOf(tab);
   addressInput.value = isNewTabUrl(url) ? '' : url;
   updateNavButtons();
+  setBusy(tab.tabEl.classList.contains('loading'));
 }
 
 function closeTab(id) {
@@ -320,12 +337,20 @@ function relativeTime(ts) {
   return new Date(ts).toLocaleDateString();
 }
 
+function setBusy(on) {
+  loadbar.classList.toggle('on', on);
+}
+
 function navigateTo(url) {
   const tab = activeTab();
   if (!tab) return;
   hideSuggestions();
   addressInput.blur();
-  tab.webview.loadURL(url);
+  // loadURL rejects with ERR_ABORTED (-3) whenever a navigation is
+  // superseded -- a redirect, or you typing a new address before the last
+  // one settled. The page still loads; the rejection is only noise, but an
+  // unhandled one surfaces as a scary GUEST_VIEW_MANAGER_CALL stack.
+  tab.webview.loadURL(url).catch(() => {});
 }
 
 // ---------- Address bar suggestions ----------

@@ -187,6 +187,14 @@ clearing controls:
 - **Clear browsing history** -- empties the list and the address bar's
   suggestions.
 
+## Knowing something is happening
+
+A loading tab swaps its favicon for a spinner, and a thin amber sweep runs
+along the bottom of the toolbar while the tab you are looking at is still
+fetching. The sweep is deliberately indeterminate: Chromium reports no real
+progress figure for an embedded page, so a bar that filled up would be
+inventing one.
+
 ## Privacy and security
 
 The browser blocks third-party tracking and ad hosts at the network layer
