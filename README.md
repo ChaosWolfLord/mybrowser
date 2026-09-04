@@ -6,52 +6,46 @@ next to your normal browsing tabs. One Google sign-in applies everywhere in
 the app. Your open tabs are remembered across restarts. Updates download and
 install themselves silently in the background.
 
-## One-time setup
+## Installing it
 
-### 1. Install Node.js
-Grab the LTS installer from [nodejs.org](https://nodejs.org) if you don't
-already have it.
+The browser runs from source, launched from the Start Menu like any other
+app. The installed copy lives at `%LOCALAPPDATA%\MyBrowser` and is a git
+clone of this repository, which is also how it updates itself.
 
-### 2. Install dependencies
-Open a terminal (PowerShell or Command Prompt) in this folder and run:
+**It must not run from the OneDrive folder.** That is not a preference:
+
+| Location | Time to a usable window |
+|---|---|
+| OneDrive | **10.3 seconds** |
+| `%LOCALAPPDATA%\MyBrowser` | **0.36 seconds** |
+
+OneDrive Files On-Demand turns every file into a placeholder that its filter
+driver has to service on each read, and starting a browser reads thousands
+of files. Keep the repository wherever you like; run the local clone.
+
+To set it up from scratch:
+
 ```
+git clone https://github.com/ChaosWolfLord/mybrowser.git "$env:LOCALAPPDATA\MyBrowser"
+cd "$env:LOCALAPPDATA\MyBrowser"
 npm install
 ```
 
-### 3. The GitHub repo that hosts updates  (done, with one thing left)
-Silent auto-updates work by checking a GitHub repo for new releases, which
-is what avoids paying for a code-signing certificate.
+Then make a Start Menu shortcut pointing at
+`%LOCALAPPDATA%\MyBrowser
+ode_modules\electron\dist\electron.exe`
+with `%LOCALAPPDATA%\MyBrowser` as both the argument and the working
+directory. `electron.exe` is a windowed program, so it opens no console.
 
-The repo already exists and this project is already pushed to it:
-**https://github.com/ChaosWolfLord/mybrowser**
+## Updating
 
-**One thing still to do:** the repo is currently *private*, and
-electron-updater cannot read releases from a private repo without a token
-baked into the shipped app. Until it is public, the update check fails
-silently every time. To fix it, go to the repo's **Settings -> General ->
-Danger Zone -> Change visibility -> Make public**. Nothing sensitive lives
-in here: it is about 700 lines of UI code plus the installer.
+Nothing to do. Thirty seconds after launch, and every four hours after
+that, the browser runs `git pull --ff-only` on its own clone in the
+background; the new code runs the next time you open it. If dependencies
+changed, it reinstalls them too.
 
-### 4. Create a GitHub token (needed only to publish new versions, not to run the app)
-1. Go to **github.com -> Settings -> Developer settings -> Personal access
-   tokens -> Fine-grained tokens -> Generate new token**.
-2. Scope it to just the `mybrowser` repo, with **Contents: Read and write**
-   permission.
-3. Copy the token somewhere safe -- you'll set it as `GH_TOKEN` whenever you
-   publish a new version (see below).
-
-### 5. Build and install the app
-```
-$env:GH_TOKEN = "your_token_here"
-npm run release
-```
-This builds a Windows installer and uploads it to a GitHub Release in your
-repo. Find the installer in the `dist` folder (`My Browser Setup 1.0.0.exe`),
-run it once — that's the "permanent install" step. It puts a shortcut in your
-Start Menu like any normal app. Windows will likely show a SmartScreen
-warning the first time since the installer isn't code-signed; click **More
-info → Run anyway**. This only happens on this first manual install, not on
-future auto-updates.
+The pull is `--ff-only` deliberately, so if you ever edit files in the
+running clone the update fails loudly rather than overwriting your work.
 
 ## From here on: just open it from the Start Menu
 

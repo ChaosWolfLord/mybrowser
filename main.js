@@ -1,6 +1,7 @@
 const { app, BrowserWindow, session, ipcMain, Menu, clipboard, shell, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { execFile } = require('child_process');
 const { autoUpdater } = require('electron-updater');
 
 // Built from the Chromium actually inside this Electron, never hardcoded.
@@ -828,8 +829,42 @@ ipcMain.handle('app-menu', () => {
 // yanking the app out from under you mid-session, an update is applied the
 // next time you close the window, not the instant it finishes downloading.
 
+// Running from a source checkout, the checkout itself is the shipping
+// vehicle: pull in the background and the new code runs next launch. This
+// exists because Smart App Control on this machine blocks building the
+// installer at all, so there is no packaged artefact to update.
+function updateFromGit() {
+  const repo = __dirname;
+  if (!fs.existsSync(path.join(repo, '.git'))) return;
+
+  // --ff-only on purpose: if the checkout has diverged or has local edits,
+  // the pull fails loudly instead of touching your work.
+  execFile('git', ['pull', '--ff-only'], { cwd: repo, windowsHide: true, timeout: 60000 },
+    (err, stdout, stderr) => {
+      if (err) {
+        console.error('Update check failed:', String(stderr || err.message).trim());
+        return;
+      }
+      const out = String(stdout);
+      if (/Already up to date/i.test(out)) return;
+      console.log('Updated from git. The new version runs next time you open the browser.');
+
+      // Dependencies only need reinstalling when the manifest actually moved.
+      if (/package(-lock)?\.json/.test(out)) {
+        execFile('npm', ['install', '--omit=dev', '--no-audit', '--no-fund'],
+          { cwd: repo, windowsHide: true, shell: true, timeout: 5 * 60 * 1000 },
+          (e) => { if (e) console.error('Dependency update failed:', e.message); });
+      }
+    });
+}
+
 function setupAutoUpdate() {
-  if (!app.isPackaged) return; // skip in `npm start` -- there's no build to update
+  if (!app.isPackaged) {
+    // Deferred off the startup path, same as the packaged check below.
+    setTimeout(updateFromGit, 30 * 1000);
+    setInterval(updateFromGit, 4 * 60 * 60 * 1000);
+    return;
+  }
 
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = false; // we control exactly when, below

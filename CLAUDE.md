@@ -27,6 +27,26 @@ single Google sign-in covers all five sidebar apps plus regular tabs.
 
 ## Things that will bite you
 
+- **Never run this from the OneDrive folder.** Measured on this machine,
+  with an otherwise identical build:
+
+  | Location | Window on screen |
+  |---|---|
+  | `OneDrive\Documents\BrowserPersonal\...` | **10,337 ms** |
+  | `%LOCALAPPDATA%\MyBrowser` | **356 ms** |
+
+  OneDrive Files On-Demand marks every file a `ReparsePoint`, so each read
+  goes through its filter driver; spawning a renderer reads a great many
+  Chromium files. A blank page took the same 10.3s, which is what proved it
+  was the location and not the app. The repository can live in OneDrive; the
+  copy you *run* must not. If startup ever feels slow again, check
+  `(Get-Item index.html -Force).Attributes` for `ReparsePoint` before
+  looking at any code.
+- **The request filters are not a performance problem.** 577 requests on a
+  real Google results page cost 8.9ms through `onBeforeRequest` and 3.2ms
+  through `onBeforeSendHeaders` -- about 0.015ms each. Measure before
+  optimising them again.
+
 - **Never hardcode a Chrome version in the user-agent.** A pinned
   `Chrome/128` silently became years out of date, and Google serves Gmail
   and Calendar a cut-down *legacy* interface to any browser it thinks is
