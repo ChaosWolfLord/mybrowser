@@ -195,6 +195,7 @@ function attachWebviewEvents(tab) {
     if (!icon) return;
     iconEl.src = icon;
     iconEl.classList.add('shown');
+    backfillBookmarkIcon(currentUrlOf(tab), icon);
   });
   webview.addEventListener('dom-ready', () => applyTabZoom(tab));
   webview.addEventListener('found-in-page', (e) => {
@@ -672,6 +673,20 @@ function renderBookmarks() {
     chip.className = 'bm';
     chip.title = b.url;
 
+    if (b.icon) {
+      const icon = document.createElement('img');
+      icon.className = 'bm-icon';
+      icon.src = b.icon;
+      // A favicon URL can rot; fall back to the dot rather than a gap.
+      icon.addEventListener('error', () => {
+        icon.remove();
+        chip.classList.add('no-icon');
+      });
+      chip.appendChild(icon);
+    } else {
+      chip.classList.add('no-icon');
+    }
+
     const label = document.createElement('span');
     label.className = 'bm-title';
     label.textContent = b.title || labelFor(b.url);
@@ -706,6 +721,16 @@ async function refreshBookmarks() {
   updateStar();
 }
 
+// A bookmark saved without an icon picks one up the next time you visit
+// the page, so the bar fills in on its own rather than staying dotted.
+async function backfillBookmarkIcon(url, icon) {
+  if (!bookmarksApi || !icon || !canBookmark(url)) return;
+  const entry = bookmarkList.find((b) => b.url === url);
+  if (!entry || entry.icon) return;
+  bookmarkList = await bookmarksApi.add(url, entry.title, icon);
+  renderBookmarks();
+}
+
 async function toggleBookmark(explicitUrl) {
   if (!bookmarksApi) return;
   const tab = activeTab();
@@ -715,10 +740,12 @@ async function toggleBookmark(explicitUrl) {
   if (isBookmarked(url)) {
     bookmarkList = await bookmarksApi.remove(url);
   } else {
-    // Bookmarking what you are looking at borrows that tab's title; a link
-    // bookmarked from the right-click menu has none to borrow.
-    const title = (!explicitUrl && tab) ? tab.titleEl.textContent : '';
-    bookmarkList = await bookmarksApi.add(url, title);
+    // Bookmarking what you are looking at borrows that tab's title and
+    // icon; a link bookmarked from the right-click menu has neither.
+    const own = !explicitUrl && tab;
+    const title = own ? tab.titleEl.textContent : '';
+    const icon = own && tab.iconEl.classList.contains('shown') ? tab.iconEl.src : '';
+    bookmarkList = await bookmarksApi.add(url, title, icon);
   }
   renderBookmarks();
   updateStar();

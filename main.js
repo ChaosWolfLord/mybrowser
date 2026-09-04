@@ -283,6 +283,15 @@ ipcMain.handle('settings-reset', () => {
 const BOOKMARK_LIMIT = 500;
 let bookmarks = [];      // newest first: { url, title, addedAt }
 
+// A favicon ends up in an <img src>, so only the two shapes the page's
+// CSP will actually load are kept. Anything else becomes no icon at all
+// rather than a broken request.
+function cleanIcon(icon) {
+  if (typeof icon !== 'string') return '';
+  if (icon.length > 8192) return '';
+  return /^(https:\/\/|data:image\/)/i.test(icon) ? icon : '';
+}
+
 function loadBookmarks() {
   try {
     const raw = JSON.parse(fs.readFileSync(bookmarksFile, 'utf-8'));
@@ -293,6 +302,7 @@ function loadBookmarks() {
       .map((b) => ({
         url: b.url,
         title: typeof b.title === 'string' ? b.title : b.url,
+        icon: cleanIcon(b.icon),
         addedAt: typeof b.addedAt === 'number' ? b.addedAt : Date.now()
       }))
       .slice(0, BOOKMARK_LIMIT);
@@ -311,13 +321,26 @@ function saveBookmarks() {
 
 ipcMain.handle('bookmarks-list', () => bookmarks.slice());
 
-ipcMain.handle('bookmarks-add', (event, url, title) => {
+ipcMain.handle('bookmarks-add', (event, url, title, icon) => {
   // Only real web pages: never the new-tab page or an internal page.
   if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return bookmarks.slice();
+  // Already bookmarked: this is the chance to fill in an icon it was saved
+  // without, which is how bookmarks made before icons existed get one.
+  const existing = bookmarks.find((b) => b.url === url);
+  if (existing) {
+    const found = cleanIcon(icon);
+    if (found && !existing.icon) {
+      existing.icon = found;
+      saveBookmarks();
+    }
+    return bookmarks.slice();
+  }
+
   if (!bookmarks.some((b) => b.url === url)) {
     bookmarks.unshift({
       url,
       title: (typeof title === 'string' && title.trim()) ? title.trim() : url,
+      icon: cleanIcon(icon),
       addedAt: Date.now()
     });
     if (bookmarks.length > BOOKMARK_LIMIT) bookmarks.length = BOOKMARK_LIMIT;
@@ -894,6 +917,7 @@ app.on('certificate-error', (event, webContents, url, error, certificate, callba
 });
 
 app.whenReady().then(() => {
+  if (process.platform === 'win32') app.setAppUserModelId('com.chaoswolflord.mybrowser');
   loadSettings();
   loadBookmarks();
   loadHistory();

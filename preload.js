@@ -26,7 +26,7 @@ contextBridge.exposeInMainWorld('tabStore', {
   clearData: (kind) => ipcRenderer.invoke('clear-data', kind),
   bookmarks: {
     list: () => ipcRenderer.invoke('bookmarks-list'),
-    add: (url, title) => ipcRenderer.invoke('bookmarks-add', url, title),
+    add: (url, title, icon) => ipcRenderer.invoke('bookmarks-add', url, title, icon),
     remove: (url) => ipcRenderer.invoke('bookmarks-remove', url),
     onBookmarkUrl: (callback) => {
       ipcRenderer.on('bookmark-url', (event, url) => callback(url));

@@ -605,17 +605,26 @@ html, body {
 }
 .bm:hover { background: rgba(237,228,216,0.08); color: #EDE4D8; }
 
-/* A small mark so the strip reads as bookmarks at a glance, rather than as
-   a second row of tabs that happen to be smaller. */
-.bm::before {
+/* The site's own icon where we have one. Where we do not -- a link
+   bookmarked from the right-click menu, or a site that offers none -- a
+   small amber dot stands in, so every row still starts with a mark and the
+   titles stay aligned. */
+.bm-icon {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  border-radius: 3px;
+}
+.bm.no-icon::before {
   content: "";
   width: 5px;
   height: 5px;
+  margin: 0 4px;
   flex-shrink: 0;
   border-radius: 50%;
   background: rgba(201,138,62,0.7);
 }
-.bm:hover::before { background: #C98A3E; }
+.bm.no-icon:hover::before { background: #C98A3E; }
 .bm .bm-title { overflow: hidden; text-overflow: ellipsis; }
 .bm .bm-x {
   width: 14px;
