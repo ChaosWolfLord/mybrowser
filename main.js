@@ -483,6 +483,7 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     backgroundColor: '#1E1B18',
+    icon: path.join(__dirname, 'icon.ico'),
     // Painting only once the shell is ready removes the white flash and
     // the several hundred ms of empty window frame on startup.
     show: false,
