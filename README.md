@@ -285,4 +285,6 @@ loads immediately, the rest load when you click them.
 | `renderer.js` | Tab logic, address bar, sidebar switching, session restore |
 | `styles.css` | All visual styling |
 | `newtab.html` | The page shown in a fresh tab |
+| `icon.svg` / `icon-small.svg` | Icon artwork; the small one is used below 48px |
+| `icon.ico` | Built from those by `npx electron tools/make-icon.js` |
 | `package.json` | Dependencies + electron-builder/publish configuration |
