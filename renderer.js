@@ -104,6 +104,26 @@ function labelFor(url) {
   }
 }
 
+// A Google results page is shown as just the thing you searched for. The
+// real URL is "https://www.google.com/search?q=pizza" plus a tail of
+// tracking parameters, none of which tells you anything you did not type.
+function googleQueryOf(url) {
+  try {
+    const u = new URL(url);
+    if (!/^(www\.)?google(\.[a-z]{2,3})+$/i.test(u.hostname)) return null;
+    if (u.pathname !== '/search') return null;
+    return u.searchParams.get('q');
+  } catch (err) {
+    return null;
+  }
+}
+
+function displayUrl(url) {
+  if (isNewTabUrl(url)) return '';
+  const query = googleQueryOf(url);
+  return query === null ? url : query;
+}
+
 function currentUrlOf(tab) {
   if (tab.pendingUrl) return tab.pendingUrl;
   try {
@@ -167,13 +187,13 @@ function createTab(url, options) {
     recordVisit(currentUrlOf(tab), e.title);
   });
   webview.addEventListener('did-navigate', (e) => {
-    if (activeId === id) addressInput.value = isNewTabUrl(e.url) ? '' : e.url;
+    if (activeId === id) addressInput.value = displayUrl(e.url);
     updateNavButtons();
     persistTabs();
     recordVisit(e.url, '');
   });
   webview.addEventListener('did-navigate-in-page', (e) => {
-    if (activeId === id) addressInput.value = isNewTabUrl(e.url) ? '' : e.url;
+    if (activeId === id) addressInput.value = displayUrl(e.url);
     updateNavButtons();
     persistTabs();
   });
@@ -243,7 +263,7 @@ function setActiveTab(id) {
   }
 
   const url = currentUrlOf(tab);
-  addressInput.value = isNewTabUrl(url) ? '' : url;
+  addressInput.value = displayUrl(url);
   updateNavButtons();
   setBusy(tab.tabEl.classList.contains('loading'));
 }
@@ -416,8 +436,23 @@ async function refreshSuggestions() {
 }
 
 addressInput.addEventListener('input', refreshSuggestions);
-addressInput.addEventListener('blur', () => setTimeout(hideSuggestions, 120));
+addressInput.addEventListener('blur', () => {
+  setTimeout(hideSuggestions, 120);
+  const tab = activeTab();
+  if (tab) addressInput.value = displayUrl(currentUrlOf(tab));
+});
+
 addressInput.addEventListener('focus', () => {
+  // Hiding the URL is fine until you want to copy or edit it, so focus
+  // puts the real one back.
+  const tab = activeTab();
+  if (tab) {
+    const real = currentUrlOf(tab);
+    if (!isNewTabUrl(real) && displayUrl(real) !== real) {
+      addressInput.value = real;
+      addressInput.select();
+    }
+  }
   if (addressInput.value.trim()) refreshSuggestions();
 });
 
@@ -488,6 +523,7 @@ async function refreshHistoryList() {
 }
 
 function openHistory() {
+  closeSettings();
   downloadsOverlay.classList.remove('open');
   historyOverlay.classList.add('open');
   historySearch.value = '';
@@ -509,6 +545,193 @@ document.getElementById('history-close').addEventListener('click', closeHistory)
 document.getElementById('history-clear').addEventListener('click', async () => {
   await historyApi.clear();
   refreshHistoryList();
+});
+
+// ---------- Settings ----------
+
+const settingsApi = window.tabStore && window.tabStore.settings;
+const settingsOverlay = document.getElementById('settings-overlay');
+const settingsList = document.getElementById('settings-list');
+
+// Described rather than hardcoded, so a new switch is one entry here plus
+// one key in DEFAULT_SETTINGS in main.js.
+const SETTINGS_SECTIONS = [
+  {
+    title: 'Blocking',
+    items: [
+      {
+        key: 'blockTrackers',
+        label: 'Block trackers and ads',
+        hint: 'Refuses known tracking, analytics and ad hosts before the request leaves your machine. Also the biggest thing you can do for page speed.'
+      },
+      {
+        key: 'stripTrackingParams',
+        label: 'Strip tracking parameters from links',
+        hint: 'Removes utm_*, fbclid, gclid and similar tags from addresses you open. The page is identical; the tag only ties the visit back to where you came from.'
+      }
+    ]
+  },
+  {
+    title: 'Connection',
+    items: [
+      {
+        key: 'httpsOnly',
+        label: 'Always try HTTPS first',
+        hint: 'Upgrades plain http:// pages to https://. Local addresses are exempt so development servers still work.'
+      },
+      {
+        key: 'sendDoNotTrack',
+        label: 'Send Do Not Track and Global Privacy Control',
+        hint: 'Adds DNT and Sec-GPC to every request. Most sites ignore DNT, but Sec-GPC carries actual legal weight in some places.'
+      },
+      {
+        key: 'trimReferrer',
+        label: 'Trim referrers between sites',
+        hint: 'Tells a site you came from another site, but not which page. Off by default because it breaks images on sites that check the referrer.'
+      },
+      {
+        key: 'blockWebRTCLeak',
+        label: 'Hide your local address from WebRTC',
+        hint: 'Without this a page can use WebRTC to discover your machine on the local network, even through a VPN.'
+      }
+    ]
+  },
+  {
+    title: 'What sites may ask for',
+    items: [
+      {
+        key: 'allowNotifications',
+        label: 'Allow notifications',
+        hint: 'Everything not listed here is refused outright and never prompts: location, camera, microphone, MIDI, USB and serial.'
+      },
+      {
+        key: 'allowClipboard',
+        label: 'Allow reading the clipboard'
+      }
+    ]
+  },
+  {
+    title: 'On exit',
+    items: [
+      {
+        key: 'clearHistoryOnExit',
+        label: 'Clear browsing history when the browser closes',
+        hint: 'Does not sign you out; cookies are untouched.'
+      }
+    ]
+  }
+];
+
+function makeSwitch(on, onToggle) {
+  const el = document.createElement('button');
+  el.className = 'sw' + (on ? ' on' : '');
+  el.setAttribute('role', 'switch');
+  el.setAttribute('aria-checked', on ? 'true' : 'false');
+  el.addEventListener('click', () => onToggle(!el.classList.contains('on')));
+  return el;
+}
+
+function settingsRow(item, values) {
+  const row = document.createElement('div');
+  row.className = 'set-row';
+
+  const main = document.createElement('div');
+  main.className = 'set-main';
+  const label = document.createElement('div');
+  label.className = 'set-label';
+  label.textContent = item.label;
+  main.appendChild(label);
+
+  if (item.hint) {
+    const hint = document.createElement('div');
+    hint.className = 'set-hint';
+    hint.textContent = item.hint;
+    main.appendChild(hint);
+  }
+
+  const sw = makeSwitch(values[item.key], async (next) => {
+    sw.classList.toggle('on', next);
+    sw.setAttribute('aria-checked', next ? 'true' : 'false');
+    await settingsApi.set(item.key, next);
+  });
+
+  row.appendChild(main);
+  row.appendChild(sw);
+  return row;
+}
+
+function dataActions() {
+  const wrap = document.createElement('div');
+  wrap.className = 'set-actions';
+  const add = (label, kind) => {
+    const b = document.createElement('button');
+    b.className = 'overlay-btn';
+    b.textContent = label;
+    b.addEventListener('click', () => window.tabStore.clearData(kind));
+    wrap.appendChild(b);
+  };
+  add('Sign out of all sites', 'signout');
+  add('Clear cache', 'cache');
+  add('Clear history', 'history');
+  return wrap;
+}
+
+async function renderSettings() {
+  if (!settingsApi) return;
+  let state;
+  try {
+    state = await settingsApi.get();
+  } catch (err) {
+    return;
+  }
+
+  settingsList.innerHTML = '';
+  SETTINGS_SECTIONS.forEach((section) => {
+    const head = document.createElement('div');
+    head.className = 'set-section';
+    head.textContent = section.title;
+    settingsList.appendChild(head);
+    section.items.forEach((item) => {
+      settingsList.appendChild(settingsRow(item, state.values));
+    });
+  });
+
+  const head = document.createElement('div');
+  head.className = 'set-section';
+  head.textContent = 'Clear data now';
+  settingsList.appendChild(head);
+  settingsList.appendChild(dataActions());
+
+  if (state.blocked > 0) {
+    const tally = document.createElement('div');
+    tally.className = 'set-hint';
+    tally.style.padding = '14px 10px 4px 10px';
+    tally.innerHTML = 'Blocked <b>' + state.blocked +
+      '</b> tracking requests since this browser started.';
+    settingsList.appendChild(tally);
+  }
+}
+
+function closeSettings() {
+  settingsOverlay.classList.remove('open');
+}
+
+function openSettings() {
+  closeHistory();
+  closeDownloads();
+  settingsOverlay.classList.add('open');
+  renderSettings();
+}
+
+function toggleSettings() {
+  if (settingsOverlay.classList.contains('open')) closeSettings();
+  else openSettings();
+}
+
+document.getElementById('settings-close').addEventListener('click', closeSettings);
+document.getElementById('settings-reset').addEventListener('click', async () => {
+  await settingsApi.reset();
+  renderSettings();
 });
 
 // ---------- Downloads ----------
@@ -625,6 +848,7 @@ function closeDownloads() {
 
 function openDownloads() {
   closeHistory();
+  closeSettings();
   downloadsOverlay.classList.add('open');
   refreshDownloads();
 }
@@ -960,7 +1184,8 @@ const SHORTCUTS = {
   find: openFind,
   history: toggleHistory,
   downloads: toggleDownloads,
-  escape: () => { closeFind(); closeHistory(); closeDownloads(); },
+  settings: toggleSettings,
+  escape: () => { closeFind(); closeHistory(); closeDownloads(); closeSettings(); },
   'next-tab': () => cycleTab(1),
   'prev-tab': () => cycleTab(-1),
   'zoom-in': () => nudgeTabZoom(0.1),
@@ -976,7 +1201,7 @@ function runShortcut(name) {
 window.tabStore?.onShortcut?.(runShortcut);
 
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeFind(); closeHistory(); closeDownloads(); return; }
+  if (e.key === 'Escape') { closeFind(); closeHistory(); closeDownloads(); closeSettings(); return; }
 
   const mod = e.metaKey || e.ctrlKey;
   if (!mod) return;
@@ -989,6 +1214,7 @@ window.addEventListener('keydown', (e) => {
   else if (key === 'f') name = 'find';
   else if (key === 'h') name = 'history';
   else if (key === 'j') name = 'downloads';
+  else if (key === ',') name = 'settings';
   else if (key === 'tab') name = e.shiftKey ? 'prev-tab' : 'next-tab';
   else if (key === '=' || key === '+') name = 'zoom-in';
   else if (key === '-') name = 'zoom-out';

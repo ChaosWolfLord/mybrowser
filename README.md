@@ -195,6 +195,31 @@ fetching. The sweep is deliberately indeterminate: Chromium reports no real
 progress figure for an embedded page, so a bar that filled up would be
 inventing one.
 
+## Settings
+
+`Ctrl+,` or the three-dot menu. Everything protective is a switch rather
+than a decision baked into the code, and a switch that is off costs nothing
+-- the request handler behind it is torn down rather than left running and
+deciding to do nothing.
+
+| Setting | Default | What it does |
+|---|---|---|
+| Block trackers and ads | on | Refuses known tracking, analytics and ad hosts before the request leaves your machine |
+| Strip tracking parameters | on | Removes `utm_*`, `fbclid`, `gclid` and 20-odd others from addresses you open |
+| Always try HTTPS first | on | Upgrades plain `http://` pages; loopback exempt so local dev servers work |
+| Do Not Track + Global Privacy Control | on | Sends `DNT` and `Sec-GPC`. Most sites ignore DNT; `Sec-GPC` has legal weight in some places |
+| Trim referrers between sites | **off** | Sends the origin but not the page. Off because it breaks images on sites that check the referrer |
+| Hide local address from WebRTC | on | Stops a page discovering your machine on the local network, even through a VPN |
+| Allow notifications | on | Everything unlisted is refused outright and never prompts: location, camera, microphone, MIDI, USB, serial |
+| Allow clipboard reading | on | |
+| Clear history on exit | off | Does not sign you out; cookies untouched |
+
+The page also carries the clear-data buttons and a count of how many
+tracking requests have been refused since the browser started.
+
+Settings live in `settings.json` in the app's data folder. Only keys the app
+already knows, holding booleans, are read back from it.
+
 ## Privacy and security
 
 The browser blocks third-party tracking and ad hosts at the network layer

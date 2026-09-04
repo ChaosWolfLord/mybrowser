@@ -17,20 +17,13 @@ const CHROME_UA =
 
 const tabsFile = path.join(app.getPath('userData'), 'tabs.json');
 const historyFile = path.join(app.getPath('userData'), 'history.json');
+const settingsFile = path.join(app.getPath('userData'), 'settings.json');
 
 let mainWindow = null;
+let mainSession = null;
 let updateReadyToInstall = false;
 
 // ---------- Security policy ----------
-
-// Anything absent from this list is refused outright: geolocation, camera,
-// microphone, MIDI, USB, serial. Nothing this browser is for needs them,
-// and a page that asks for them is a page worth being suspicious of.
-const ALLOWED_PERMISSIONS = [
-  'notifications',
-  'clipboard-read',
-  'clipboard-sanitized-write'
-];
 
 // Popups are denied everywhere except Google's sign-in, which genuinely
 // needs one. Anything else that tries to open a window is routed into a
@@ -95,24 +88,192 @@ function shouldUpgrade(details) {
 }
 
 function applyNetworkPolicy(sess) {
-  sess.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, (details, callback) => {
-    if (isTracker(details.url)) return callback({ cancel: true });
-    if (shouldUpgrade(details)) {
-      return callback({ redirectURL: details.url.replace(/^http:/i, 'https:') });
-    }
-    callback({});
-  });
+  syncRequestHandler(sess);
+  syncHeaderHandler(sess);
 
   sess.setPermissionRequestHandler((webContents, permission, callback) => {
-    callback(ALLOWED_PERMISSIONS.includes(permission));
+    callback(permissionAllowed(permission));
   });
 
   // The request handler above covers prompts; this covers the synchronous
   // checks a page makes to see whether it already holds a permission.
   sess.setPermissionCheckHandler((webContents, permission) => {
-    return ALLOWED_PERMISSIONS.includes(permission);
+    return permissionAllowed(permission);
   });
 }
+
+// ---------- Settings ----------
+// Every protection below is a switch rather than a hardcoded policy, and a
+// switch that is off costs nothing: the request handlers it needs are torn
+// down entirely instead of running and deciding to do nothing.
+
+const DEFAULT_SETTINGS = {
+  blockTrackers: true,
+  httpsOnly: true,
+  stripTrackingParams: true,
+  sendDoNotTrack: true,
+  trimReferrer: false,        // off by default: breaks hotlink-protected images
+  blockWebRTCLeak: true,
+  allowNotifications: true,
+  allowClipboard: true,
+  clearHistoryOnExit: false
+};
+
+let settings = Object.assign({}, DEFAULT_SETTINGS);
+let blockedCount = 0;
+
+function loadSettings() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(settingsFile, 'utf-8'));
+    // Only keys we already know, and only booleans: a stale or hand-edited
+    // file cannot introduce anything the rest of this file does not expect.
+    Object.keys(DEFAULT_SETTINGS).forEach((key) => {
+      if (typeof raw[key] === 'boolean') settings[key] = raw[key];
+    });
+  } catch (err) {
+    // No file yet, or unreadable: defaults stand.
+  }
+}
+
+function saveSettings() {
+  try {
+    fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
+  } catch (err) {
+    console.error('Failed to save settings:', err);
+  }
+}
+
+// Campaign and click identifiers. Stripping these changes nothing about the
+// page you get; they exist to tie your visit back to wherever you came from.
+const TRACKING_PARAMS = [
+  'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'utm_id',
+  'gclid', 'gbraid', 'wbraid', 'dclid', 'fbclid', 'msclkid', 'twclid', 'igshid',
+  'mc_eid', 'mc_cid', 'mkt_tok', '_hsenc', '_hsmi', 'vero_id', 'oly_enc_id',
+  'yclid', 'ttclid', 'ref_src', 'si'
+];
+
+function stripTrackingParams(url) {
+  if (url.indexOf('?') === -1) return null;   // nothing to strip, skip the parse
+  try {
+    const u = new URL(url);
+    let removed = false;
+    for (const param of TRACKING_PARAMS) {
+      if (u.searchParams.has(param)) {
+        u.searchParams.delete(param);
+        removed = true;
+      }
+    }
+    // Returning null when nothing changed matters: redirecting a request to
+    // its own URL would loop forever.
+    return removed ? u.toString() : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+function permissionAllowed(permission) {
+  if (permission === 'notifications') return settings.allowNotifications;
+  if (permission === 'clipboard-read' || permission === 'clipboard-sanitized-write') {
+    return settings.allowClipboard;
+  }
+  return false;   // geolocation, camera, microphone, MIDI, USB, serial...
+}
+
+// Without this a page can use WebRTC to learn your machine's local network
+// address even through a VPN. The policy confines it to the public one.
+function applyWebRTCPolicy(contents) {
+  try {
+    contents.setWebRTCIPHandlingPolicy(
+      settings.blockWebRTCLeak ? 'default_public_interface_only' : 'default'
+    );
+  } catch (err) {
+    // Not every webContents supports it; not worth failing over.
+  }
+}
+
+function syncRequestHandler(sess) {
+  const wanted = settings.blockTrackers || settings.httpsOnly || settings.stripTrackingParams;
+  if (!wanted) return sess.webRequest.onBeforeRequest(null);
+
+  sess.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, (details, callback) => {
+    if (settings.blockTrackers && isTracker(details.url)) {
+      blockedCount++;
+      return callback({ cancel: true });
+    }
+    if (settings.httpsOnly && shouldUpgrade(details)) {
+      return callback({ redirectURL: details.url.replace(/^http:/i, 'https:') });
+    }
+    if (settings.stripTrackingParams && details.resourceType === 'mainFrame') {
+      const cleaned = stripTrackingParams(details.url);
+      if (cleaned) return callback({ redirectURL: cleaned });
+    }
+    callback({});
+  });
+}
+
+function syncHeaderHandler(sess) {
+  const wanted = settings.sendDoNotTrack || settings.trimReferrer;
+  if (!wanted) return sess.webRequest.onBeforeSendHeaders(null);
+
+  sess.webRequest.onBeforeSendHeaders({ urls: ['<all_urls>'] }, (details, callback) => {
+    const headers = details.requestHeaders;
+
+    if (settings.sendDoNotTrack) {
+      headers.DNT = '1';
+      headers['Sec-GPC'] = '1';   // the one with actual legal weight in some places
+    }
+
+    if (settings.trimReferrer && headers.Referer) {
+      const from = hostOf(headers.Referer);
+      const to = hostOf(details.url);
+      if (from && to && from !== to) {
+        // Cross-site, so send the origin and not the exact page you were on.
+        try {
+          headers.Referer = new URL(headers.Referer).origin + '/';
+        } catch (err) {
+          delete headers.Referer;
+        }
+      }
+    }
+
+    callback({ requestHeaders: headers });
+  });
+}
+
+function applySettings() {
+  if (!mainSession) return;
+  syncRequestHandler(mainSession);
+  syncHeaderHandler(mainSession);
+  require('electron').webContents.getAllWebContents().forEach(applyWebRTCPolicy);
+}
+
+ipcMain.handle('settings-get', () => ({
+  values: Object.assign({}, settings),
+  defaults: Object.assign({}, DEFAULT_SETTINGS),
+  blocked: blockedCount
+}));
+
+ipcMain.handle('settings-set', (event, key, value) => {
+  // Renderer input: accept only known keys with boolean values.
+  if (!Object.prototype.hasOwnProperty.call(DEFAULT_SETTINGS, key)) return null;
+  if (typeof value !== 'boolean') return null;
+  settings[key] = value;
+  saveSettings();
+  applySettings();
+  return Object.assign({}, settings);
+});
+
+ipcMain.handle('clear-data', (event, kind) => {
+  if (kind !== 'signout' && kind !== 'cache' && kind !== 'history') return;
+  return clearData(kind);
+});
+
+ipcMain.handle('settings-reset', () => {
+  settings = Object.assign({}, DEFAULT_SETTINGS);
+  saveSettings();
+  applySettings();
+  return Object.assign({}, settings);
+});
 
 // ---------- Right-click menu ----------
 // Electron ships no context menu whatsoever, so without this there is no
@@ -180,6 +341,8 @@ function buildContextMenu(contents, params) {
 // without it a compromised page could try to attach a webview of its own
 // carrying Node privileges.
 function hardenWebContents(contents) {
+  applyWebRTCPolicy(contents);
+
   contents.on('will-attach-webview', (event, webPreferences, params) => {
     delete webPreferences.preload;
     webPreferences.nodeIntegration = false;
@@ -214,6 +377,7 @@ function hardenWebContents(contents) {
       else if (key === 'f') name = 'find';
       else if (key === 'h') name = 'history';
       else if (key === 'j') name = 'downloads';
+      else if (key === ',') name = 'settings';
       else if (key === 'tab') name = input.shift ? 'prev-tab' : 'next-tab';
       else if (key === '=' || key === '+') name = 'zoom-in';
       else if (key === '-') name = 'zoom-out';
@@ -274,7 +438,7 @@ function createWindow() {
   // Every webview uses partition="persist:main", which maps to this same
   // session. Signing into Google once keeps you signed in everywhere in the
   // app, across restarts, just like a normal browser profile.
-  const mainSession = session.fromPartition('persist:main');
+  mainSession = session.fromPartition('persist:main');
   mainSession.setUserAgent(CHROME_UA);
   applyNetworkPolicy(mainSession);
   mainSession.on('will-download', handleDownload);
@@ -584,6 +748,8 @@ async function clearData(kind) {
 
 ipcMain.handle('app-menu', () => {
   Menu.buildFromTemplate([
+    { label: 'Settings', accelerator: 'Ctrl+,', click: () => sendShortcut('settings') },
+    { type: 'separator' },
     { label: 'History', accelerator: 'Ctrl+H', click: () => sendShortcut('history') },
     { label: 'Downloads', accelerator: 'Ctrl+J', click: () => sendShortcut('downloads') },
     { type: 'separator' },
@@ -629,6 +795,7 @@ app.on('certificate-error', (event, webContents, url, error, certificate, callba
 });
 
 app.whenReady().then(() => {
+  loadSettings();
   loadHistory();
   setInterval(flushHistory, 15 * 1000);
   mainWindow = createWindow();
@@ -639,7 +806,11 @@ app.whenReady().then(() => {
   });
 });
 
-app.on('before-quit', flushHistory);
+app.on('before-quit', () => {
+  if (settings.clearHistoryOnExit) history = [];
+  historyDirty = true;
+  flushHistory();
+});
 
 app.on('window-all-closed', () => {
   flushHistory();

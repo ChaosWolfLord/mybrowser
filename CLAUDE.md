@@ -97,6 +97,27 @@ single Google sign-in covers all five sidebar apps plus regular tabs.
 - **Preferences live in renderer `localStorage`** (sidebar width, per-app
   zoom, per-app layout). Tabs go over IPC to `tabs.json` in userData.
 
+## Settings
+
+`DEFAULT_SETTINGS` in `main.js` is the single source of truth; the renderer
+only renders what it is told and calls `settings-set`. Adding a switch means
+one key there plus one entry in `SETTINGS_SECTIONS` in `renderer.js`.
+
+- **Main owns the settings, not the renderer.** Every policy that depends on
+  one is enforced in the main process, so a compromised page cannot turn a
+  protection off by writing to `localStorage`.
+- **`settings-set` validates.** Unknown keys and non-boolean values are
+  refused. `loadSettings` does the same for the file on disk, so a stale or
+  hand-edited `settings.json` cannot introduce a key the code does not
+  expect, and cannot pollute the prototype.
+- **Handlers are torn down, not short-circuited.** `syncRequestHandler` and
+  `syncHeaderHandler` call `onBeforeRequest(null)` / `onBeforeSendHeaders(null)`
+  when nothing in their group is enabled, so switching everything off really
+  does remove the per-request cost instead of paying it to decide nothing.
+- **`stripTrackingParams` must return null when it changes nothing.**
+  Redirecting a request to its own URL loops forever. Stripping is
+  idempotent, which is what makes one redirect the maximum.
+
 ## Where things live
 
 - **History** is main-process state (`history` array, `history.json`), held

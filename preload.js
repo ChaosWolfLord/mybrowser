@@ -23,6 +23,12 @@ contextBridge.exposeInMainWorld('tabStore', {
     clear: () => ipcRenderer.invoke('history-clear')
   },
   showAppMenu: () => ipcRenderer.invoke('app-menu'),
+  clearData: (kind) => ipcRenderer.invoke('clear-data', kind),
+  settings: {
+    get: () => ipcRenderer.invoke('settings-get'),
+    set: (key, value) => ipcRenderer.invoke('settings-set', key, value),
+    reset: () => ipcRenderer.invoke('settings-reset')
+  },
   onSessionCleared: (callback) => {
     ipcRenderer.on('session-cleared', () => callback());
   },
