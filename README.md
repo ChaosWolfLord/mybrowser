@@ -195,9 +195,26 @@ fetching. The sweep is deliberately indeterminate: Chromium reports no real
 progress figure for an embedded page, so a bar that filled up would be
 inventing one.
 
+## Bookmarks
+
+The star at the right of the address bar saves the page you are on, or
+`Ctrl+D`. Saved pages appear on a strip under the address bar; click one to
+open it, hover for the small x to remove it. Right-clicking a link gives you
+**Bookmark link** without opening it first.
+
+The strip hides itself when you have nothing saved, and can be turned off in
+Settings. Bookmarks live in `bookmarks.json` in the app's data folder, and
+only ordinary `http`/`https` pages can be saved.
+
 ## Settings
 
-`Ctrl+,` or the three-dot menu. Everything protective is a switch rather
+Opens as a **tab**, with `Ctrl+,` or from the menu. It is not a website: it
+is part of the browser, drawn by the browser, and it cannot be loaded from
+anywhere. Close it like any other tab.
+
+### What is on it
+
+Everything protective is a switch rather
 than a decision baked into the code, and a switch that is off costs nothing
 -- the request handler behind it is torn down rather than left running and
 deciding to do nothing.

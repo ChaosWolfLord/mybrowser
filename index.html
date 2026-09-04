@@ -24,6 +24,9 @@
     <div class="addressbar">
       <svg class="lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg>
       <input id="address-input" type="text" placeholder="Search Google or type a URL" spellcheck="false">
+      <button class="starbtn" id="star-btn" title="Bookmark this page (Ctrl+D)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3.6l2.5 5.4 5.9.7-4.4 4 1.2 5.8L12 16.6 6.8 19.5 8 13.7l-4.4-4 5.9-.7z"/></svg>
+      </button>
       <div class="suggest" id="suggest"></div>
     </div>
 
@@ -43,6 +46,7 @@
   </div>
 
   <div class="tabstrip" id="tabstrip"></div>
+    <div class="bookmarks" id="bookmarks"></div>
     <div class="loadbar" id="loadbar"><i></i></div>
   </div>
 
@@ -79,12 +83,11 @@
         </div>
         <div class="overlay-list" id="downloads-list"></div>
       </div>
-      <div class="overlay" id="settings-overlay">
+      <div class="page" id="page-settings">
         <div class="overlay-head">
           <span class="overlay-title">Settings</span>
           <span class="overlay-spacer"></span>
           <button class="overlay-btn" id="settings-reset">Restore defaults</button>
-          <button class="overlay-btn" id="settings-close">Close</button>
         </div>
         <div class="overlay-list" id="settings-list"></div>
       </div>

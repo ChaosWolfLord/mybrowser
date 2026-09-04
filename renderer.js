@@ -90,6 +90,23 @@ function hardenAgainstDetection(webview) {
   });
 }
 
+// Pages that live inside the shell instead of being fetched. They render
+// in a panel that already has the IPC bridge, because a <webview> carries
+// no preload by design and could never reach it -- so settings could not be
+// a real website here even if we wanted it to be.
+const INTERNAL_PAGES = {
+  settings: {
+    title: 'Settings',
+    panelId: 'page-settings',
+    sentinel: 'about:settings',
+    icon: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='9' fill='none' stroke='%23C98A3E' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='3.2' fill='%23C98A3E'/%3E%3C/svg%3E"
+  }
+};
+
+function internalKindOf(url) {
+  return Object.keys(INTERNAL_PAGES).find((k) => INTERNAL_PAGES[k].sentinel === url) || null;
+}
+
 function isNewTabUrl(url) {
   return !!url && url.endsWith('newtab.html');
 }
@@ -120,11 +137,13 @@ function googleQueryOf(url) {
 
 function displayUrl(url) {
   if (isNewTabUrl(url)) return '';
+  if (internalKindOf(url)) return '';
   const query = googleQueryOf(url);
   return query === null ? url : query;
 }
 
 function currentUrlOf(tab) {
+  if (tab.internal) return INTERNAL_PAGES[tab.internal].sentinel;
   if (tab.pendingUrl) return tab.pendingUrl;
   try {
     return tab.webview.getURL() || tab.webview.getAttribute('src') || 'newtab.html';
@@ -133,52 +152,12 @@ function currentUrlOf(tab) {
   }
 }
 
-function createTab(url, options) {
-  const opts = options || {};
-  const id = nextId++;
-  const target = url || 'newtab.html';
-
-  const webview = document.createElement('webview');
-  webview.setAttribute('partition', 'persist:main');
-  webview.setAttribute('useragent', CHROME_UA);
-  allowPopups(webview);
-  hardenAgainstDetection(webview);
-  // A deferred tab is created empty and only fetches its page when you
-  // first look at it. Restoring a session used to load every tab at once,
-  // which is most of why a cold start felt slow.
-  if (!opts.defer) webview.setAttribute('src', target);
-  webviewContainer.appendChild(webview);
-
-  const tabEl = document.createElement('div');
-  tabEl.className = 'tab';
-  const titleEl = document.createElement('span');
-  titleEl.className = 'title';
-  titleEl.textContent = opts.defer ? labelFor(target) : 'New tab';
-  const closeEl = document.createElement('span');
-  closeEl.className = 'closebtn';
-  closeEl.innerHTML =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 6l12 12M18 6L6 18"/></svg>';
-  const iconEl = document.createElement('img');
-  iconEl.className = 'favicon';
-  const spinEl = document.createElement('span');
-  spinEl.className = 'spinner';
-  tabEl.appendChild(iconEl);
-  tabEl.appendChild(spinEl);
-  tabEl.appendChild(titleEl);
-  tabEl.appendChild(closeEl);
-  tabstrip.appendChild(tabEl);
-
-  const tab = { id, webview, tabEl, titleEl, iconEl, pendingUrl: opts.defer ? target : null };
-  tabs.push(tab);
-
-  tabEl.addEventListener('click', (e) => {
-    if (e.target.closest('.closebtn')) return;
-    setActiveTab(id);
-  });
-  closeEl.addEventListener('click', () => closeTab(id));
-  tabEl.addEventListener('auxclick', (e) => {
-    if (e.button === 1) { e.preventDefault(); closeTab(id); }
-  });
+function attachWebviewEvents(tab) {
+  const id = tab.id;
+  const webview = tab.webview;
+  const tabEl = tab.tabEl;
+  const titleEl = tab.titleEl;
+  const iconEl = tab.iconEl;
 
   webview.addEventListener('page-title-updated', (e) => {
     titleEl.textContent = e.title || 'New tab';
@@ -191,6 +170,7 @@ function createTab(url, options) {
     updateNavButtons();
     persistTabs();
     recordVisit(e.url, '');
+    if (activeId === id) updateStar();
   });
   webview.addEventListener('did-navigate-in-page', (e) => {
     if (activeId === id) addressInput.value = displayUrl(e.url);
@@ -223,6 +203,75 @@ function createTab(url, options) {
     findCount.textContent = matches ? e.result.activeMatchOrdinal + '/' + matches : 'No results';
     findCount.classList.toggle('none', !matches);
   });
+}
+
+function createTab(url, options) {
+  const opts = options || {};
+  const id = nextId++;
+  const spec = opts.internal ? INTERNAL_PAGES[opts.internal] : null;
+  const target = spec ? spec.sentinel : (url || 'newtab.html');
+
+  let webview = null;
+  const panel = spec ? document.getElementById(spec.panelId) : null;
+
+  if (!spec) {
+    webview = document.createElement('webview');
+    webview.setAttribute('partition', 'persist:main');
+    webview.setAttribute('useragent', CHROME_UA);
+    allowPopups(webview);
+    hardenAgainstDetection(webview);
+    // A deferred tab is created empty and only fetches its page when you
+    // first look at it. Restoring a session used to load every tab at once,
+    // which is most of why a cold start felt slow.
+    if (!opts.defer) webview.setAttribute('src', target);
+    webviewContainer.appendChild(webview);
+  }
+
+  const tabEl = document.createElement('div');
+  tabEl.className = 'tab';
+  const titleEl = document.createElement('span');
+  titleEl.className = 'title';
+  titleEl.textContent = spec ? spec.title : (opts.defer ? labelFor(target) : 'New tab');
+  const closeEl = document.createElement('span');
+  closeEl.className = 'closebtn';
+  closeEl.innerHTML =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+  const iconEl = document.createElement('img');
+  iconEl.className = 'favicon';
+  if (spec) {
+    iconEl.src = spec.icon;
+    iconEl.classList.add('shown');
+  }
+  const spinEl = document.createElement('span');
+  spinEl.className = 'spinner';
+  tabEl.appendChild(iconEl);
+  tabEl.appendChild(spinEl);
+  tabEl.appendChild(titleEl);
+  tabEl.appendChild(closeEl);
+  tabstrip.appendChild(tabEl);
+
+  const tab = {
+    id,
+    webview,
+    panel,
+    internal: opts.internal || null,
+    tabEl,
+    titleEl,
+    iconEl,
+    pendingUrl: (!spec && opts.defer) ? target : null
+  };
+  tabs.push(tab);
+
+  tabEl.addEventListener('click', (e) => {
+    if (e.target.closest('.closebtn')) return;
+    setActiveTab(id);
+  });
+  closeEl.addEventListener('click', () => closeTab(id));
+  tabEl.addEventListener('auxclick', (e) => {
+    if (e.button === 1) { e.preventDefault(); closeTab(id); }
+  });
+
+  if (webview) attachWebviewEvents(tab);
 
   if (!opts.silent) {
     setActiveTab(id);
@@ -232,6 +281,15 @@ function createTab(url, options) {
 }
 
 // ---------- Session persistence: remember tabs across restarts ----------
+
+function openInternalTab(kind) {
+  const existing = tabs.find((t) => t.internal === kind);
+  if (existing) {
+    setActiveTab(existing.id);
+    return existing;
+  }
+  return createTab(null, { internal: kind });
+}
 
 function persistTabs() {
   // A new tab's resolved URL is a file:// path into whichever folder this
@@ -249,11 +307,21 @@ function setActiveTab(id) {
   activeId = id;
   tabs.forEach((t) => {
     const isActive = t.id === id;
-    t.webview.classList.toggle('active', isActive);
+    if (t.webview) t.webview.classList.toggle('active', isActive);
+    if (t.panel) t.panel.classList.toggle('active', isActive);
     t.tabEl.classList.toggle('active', isActive);
   });
   const tab = tabs.find((t) => t.id === id);
   if (!tab) return;
+
+  if (tab.internal) {
+    addressInput.value = '';
+    updateNavButtons();
+    setBusy(false);
+    updateStar();
+    if (tab.internal === 'settings') renderSettings();
+    return;
+  }
 
   // First look at a deferred tab is when it actually loads.
   if (tab.pendingUrl) {
@@ -266,6 +334,7 @@ function setActiveTab(id) {
   addressInput.value = displayUrl(url);
   updateNavButtons();
   setBusy(tab.tabEl.classList.contains('loading'));
+  updateStar();
 }
 
 function closeTab(id) {
@@ -273,11 +342,12 @@ function closeTab(id) {
   if (idx === -1) return;
   const [tab] = tabs.splice(idx, 1);
   const closedUrl = currentUrlOf(tab);
-  if (!isNewTabUrl(closedUrl)) {
+  if (!isNewTabUrl(closedUrl) && !tab.internal) {
     closedTabs.push(closedUrl);
     if (closedTabs.length > 25) closedTabs.shift();
   }
-  tab.webview.remove();
+  if (tab.webview) tab.webview.remove();
+  if (tab.panel) tab.panel.classList.remove('active');
   tab.tabEl.remove();
 
   if (tabs.length === 0) {
@@ -298,6 +368,11 @@ function activeTab() {
 function updateNavButtons() {
   const tab = activeTab();
   if (!tab) return;
+  if (!tab.webview) {
+    backBtn.disabled = true;
+    fwdBtn.disabled = true;
+    return;
+  }
   try {
     backBtn.disabled = !tab.webview.canGoBack();
     fwdBtn.disabled = !tab.webview.canGoForward();
@@ -327,9 +402,15 @@ addressInput.addEventListener('keydown', (e) => {
   }
 });
 
-backBtn.addEventListener('click', () => activeTab()?.webview.goBack());
-fwdBtn.addEventListener('click', () => activeTab()?.webview.goForward());
-reloadBtn.addEventListener('click', () => activeTab()?.webview.reload());
+backBtn.addEventListener('click', () => activeTab()?.webview?.goBack());
+fwdBtn.addEventListener('click', () => activeTab()?.webview?.goForward());
+reloadBtn.addEventListener('click', () => {
+  const tab = activeTab();
+  if (!tab) return;
+  // Reloading an internal page means rebuilding it from current state.
+  if (tab.internal === 'settings') renderSettings();
+  else tab.webview?.reload();
+});
 
 document.getElementById('new-tab-btn').addEventListener('click', () => createTab());
 
@@ -363,9 +444,14 @@ function setBusy(on) {
 
 function navigateTo(url) {
   const tab = activeTab();
-  if (!tab) return;
   hideSuggestions();
   addressInput.blur();
+  // Typing an address while an internal page is showing opens a real tab,
+  // rather than trying to turn the settings page into a website.
+  if (!tab || !tab.webview) {
+    createTab(url);
+    return;
+  }
   // loadURL rejects with ERR_ABORTED (-3) whenever a navigation is
   // superseded -- a redirect, or you typing a new address before the last
   // one settled. The page still loads; the rejection is only noise, but an
@@ -523,7 +609,6 @@ async function refreshHistoryList() {
 }
 
 function openHistory() {
-  closeSettings();
   downloadsOverlay.classList.remove('open');
   historyOverlay.classList.add('open');
   historySearch.value = '';
@@ -547,10 +632,106 @@ document.getElementById('history-clear').addEventListener('click', async () => {
   refreshHistoryList();
 });
 
+// ---------- Bookmarks ----------
+
+const bookmarksApi = window.tabStore && window.tabStore.bookmarks;
+const bookmarksBar = document.getElementById('bookmarks');
+const starBtn = document.getElementById('star-btn');
+let bookmarkList = [];
+let uiSettings = {};
+
+// Only real web pages: not the new-tab page, not an internal page.
+function canBookmark(url) {
+  return /^https?:\/\//i.test(url || '');
+}
+
+function isBookmarked(url) {
+  return bookmarkList.some((b) => b.url === url);
+}
+
+function updateStar() {
+  const tab = activeTab();
+  const url = tab ? currentUrlOf(tab) : '';
+  const allowed = canBookmark(url);
+  const saved = allowed && isBookmarked(url);
+  starBtn.disabled = !allowed;
+  starBtn.classList.toggle('on', saved);
+  starBtn.title = saved ? 'Remove bookmark (Ctrl+D)' : 'Bookmark this page (Ctrl+D)';
+}
+
+function applyBookmarksBar() {
+  // Nothing saved means no empty strip taking up room.
+  const show = uiSettings.showBookmarksBar !== false && bookmarkList.length > 0;
+  bookmarksBar.classList.toggle('on', show);
+}
+
+function renderBookmarks() {
+  bookmarksBar.innerHTML = '';
+  bookmarkList.forEach((b) => {
+    const chip = document.createElement('div');
+    chip.className = 'bm';
+    chip.title = b.url;
+
+    const label = document.createElement('span');
+    label.className = 'bm-title';
+    label.textContent = b.title || labelFor(b.url);
+
+    const remove = document.createElement('span');
+    remove.className = 'bm-x';
+    remove.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+    remove.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      bookmarkList = await bookmarksApi.remove(b.url);
+      renderBookmarks();
+      updateStar();
+    });
+
+    chip.appendChild(label);
+    chip.appendChild(remove);
+    chip.addEventListener('click', () => navigateTo(b.url));
+    bookmarksBar.appendChild(chip);
+  });
+  applyBookmarksBar();
+}
+
+async function refreshBookmarks() {
+  if (!bookmarksApi) return;
+  try {
+    bookmarkList = await bookmarksApi.list();
+  } catch (err) {
+    bookmarkList = [];
+  }
+  renderBookmarks();
+  updateStar();
+}
+
+async function toggleBookmark(explicitUrl) {
+  if (!bookmarksApi) return;
+  const tab = activeTab();
+  const url = explicitUrl || (tab ? currentUrlOf(tab) : '');
+  if (!canBookmark(url)) return;
+
+  if (isBookmarked(url)) {
+    bookmarkList = await bookmarksApi.remove(url);
+  } else {
+    // Bookmarking what you are looking at borrows that tab's title; a link
+    // bookmarked from the right-click menu has none to borrow.
+    const title = (!explicitUrl && tab) ? tab.titleEl.textContent : '';
+    bookmarkList = await bookmarksApi.add(url, title);
+  }
+  renderBookmarks();
+  updateStar();
+}
+
+starBtn.addEventListener('click', () => toggleBookmark());
+if (bookmarksApi && bookmarksApi.onBookmarkUrl) {
+  bookmarksApi.onBookmarkUrl((url) => toggleBookmark(url));
+}
+
 // ---------- Settings ----------
 
 const settingsApi = window.tabStore && window.tabStore.settings;
-const settingsOverlay = document.getElementById('settings-overlay');
 const settingsList = document.getElementById('settings-list');
 
 // Described rather than hardcoded, so a new switch is one entry here plus
@@ -611,6 +792,16 @@ const SETTINGS_SECTIONS = [
     ]
   },
   {
+    title: 'Appearance',
+    items: [
+      {
+        key: 'showBookmarksBar',
+        label: 'Show the bookmarks bar',
+        hint: 'The strip under the address bar. It hides itself when you have no bookmarks saved.'
+      }
+    ]
+  },
+  {
     title: 'On exit',
     items: [
       {
@@ -653,6 +844,8 @@ function settingsRow(item, values) {
     sw.classList.toggle('on', next);
     sw.setAttribute('aria-checked', next ? 'true' : 'false');
     await settingsApi.set(item.key, next);
+    uiSettings[item.key] = next;
+    applyBookmarksBar();
   });
 
   row.appendChild(main);
@@ -685,6 +878,9 @@ async function renderSettings() {
     return;
   }
 
+  uiSettings = state.values;
+  applyBookmarksBar();
+
   settingsList.innerHTML = '';
   SETTINGS_SECTIONS.forEach((section) => {
     const head = document.createElement('div');
@@ -712,23 +908,10 @@ async function renderSettings() {
   }
 }
 
-function closeSettings() {
-  settingsOverlay.classList.remove('open');
-}
-
 function openSettings() {
-  closeHistory();
-  closeDownloads();
-  settingsOverlay.classList.add('open');
-  renderSettings();
+  openInternalTab('settings');
 }
 
-function toggleSettings() {
-  if (settingsOverlay.classList.contains('open')) closeSettings();
-  else openSettings();
-}
-
-document.getElementById('settings-close').addEventListener('click', closeSettings);
 document.getElementById('settings-reset').addEventListener('click', async () => {
   await settingsApi.reset();
   renderSettings();
@@ -848,7 +1031,6 @@ function closeDownloads() {
 
 function openDownloads() {
   closeHistory();
-  closeSettings();
   downloadsOverlay.classList.add('open');
   refreshDownloads();
 }
@@ -892,7 +1074,7 @@ document.getElementById('downloads-clear').addEventListener('click', async () =>
 
 function runFind(text, options) {
   const tab = activeTab();
-  if (!tab) return;
+  if (!tab || !tab.webview) return;
   if (!text) {
     findCount.textContent = '';
     try { tab.webview.stopFindInPage('clearSelection'); } catch (err) {}
@@ -950,6 +1132,7 @@ function originOf(url) {
 }
 
 function applyTabZoom(tab) {
+  if (!tab.webview) return;
   const origin = originOf(currentUrlOf(tab));
   const factor = (origin && tabZoom[origin]) || 1;
   try { tab.webview.setZoomFactor(factor); } catch (err) {}
@@ -957,7 +1140,7 @@ function applyTabZoom(tab) {
 
 function nudgeTabZoom(delta) {
   const tab = activeTab();
-  if (!tab) return;
+  if (!tab || !tab.webview) return;
   const origin = originOf(currentUrlOf(tab));
   if (!origin) return; // nothing to key a preference off, e.g. the new-tab page
   const current = tabZoom[origin] || 1;
@@ -1184,8 +1367,9 @@ const SHORTCUTS = {
   find: openFind,
   history: toggleHistory,
   downloads: toggleDownloads,
-  settings: toggleSettings,
-  escape: () => { closeFind(); closeHistory(); closeDownloads(); closeSettings(); },
+  settings: openSettings,
+  bookmark: () => toggleBookmark(),
+  escape: () => { closeFind(); closeHistory(); closeDownloads(); },
   'next-tab': () => cycleTab(1),
   'prev-tab': () => cycleTab(-1),
   'zoom-in': () => nudgeTabZoom(0.1),
@@ -1201,7 +1385,7 @@ function runShortcut(name) {
 window.tabStore?.onShortcut?.(runShortcut);
 
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeFind(); closeHistory(); closeDownloads(); closeSettings(); return; }
+  if (e.key === 'Escape') { closeFind(); closeHistory(); closeDownloads(); return; }
 
   const mod = e.metaKey || e.ctrlKey;
   if (!mod) return;
@@ -1215,6 +1399,7 @@ window.addEventListener('keydown', (e) => {
   else if (key === 'h') name = 'history';
   else if (key === 'j') name = 'downloads';
   else if (key === ',') name = 'settings';
+  else if (key === 'd') name = 'bookmark';
   else if (key === 'tab') name = e.shiftKey ? 'prev-tab' : 'next-tab';
   else if (key === '=' || key === '+') name = 'zoom-in';
   else if (key === '-') name = 'zoom-out';
@@ -1239,6 +1424,11 @@ window.addEventListener('keydown', (e) => {
     // Only the tab you were last looking at loads now; the rest fill in
     // when you click them.
     saved.forEach((url, i) => {
+      const kind = internalKindOf(url);
+      if (kind) {
+        createTab(null, { internal: kind, silent: true });
+        return;
+      }
       const clean = isNewTabUrl(url) ? 'newtab.html' : url;
       createTab(clean, { defer: i !== 0, silent: true });
     });
@@ -1247,6 +1437,15 @@ window.addEventListener('keydown', (e) => {
   } else {
     createTab('newtab.html');
   }
+
+  if (settingsApi) {
+    try {
+      uiSettings = (await settingsApi.get()).values;
+    } catch (err) {
+      uiSettings = {};
+    }
+  }
+  await refreshBookmarks();
 
   // The sidebar's first panel waits for the shell to go idle, so it never
   // competes with the page you actually opened the browser to see.

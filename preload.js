@@ -24,6 +24,14 @@ contextBridge.exposeInMainWorld('tabStore', {
   },
   showAppMenu: () => ipcRenderer.invoke('app-menu'),
   clearData: (kind) => ipcRenderer.invoke('clear-data', kind),
+  bookmarks: {
+    list: () => ipcRenderer.invoke('bookmarks-list'),
+    add: (url, title) => ipcRenderer.invoke('bookmarks-add', url, title),
+    remove: (url) => ipcRenderer.invoke('bookmarks-remove', url),
+    onBookmarkUrl: (callback) => {
+      ipcRenderer.on('bookmark-url', (event, url) => callback(url));
+    }
+  },
   settings: {
     get: () => ipcRenderer.invoke('settings-get'),
     set: (key, value) => ipcRenderer.invoke('settings-set', key, value),

@@ -538,6 +538,88 @@ html, body {
 
 .set-actions { display: flex; gap: 8px; padding: 6px 10px 0 10px; }
 
+/* ---------- Internal pages (settings) ---------- */
+/* Sits in the same stacking slot as a webview, because it is what a tab is
+   showing rather than something floating over one. */
+.page {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: none;
+  flex-direction: column;
+  background: #1E1B18;
+}
+.page.active { display: flex; }
+
+/* ---------- Bookmarks ---------- */
+
+.starbtn {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #6E6862;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.starbtn svg { width: 15px; height: 15px; }
+.starbtn:hover:not(:disabled) { background: rgba(237,228,216,0.1); color: #EDE4D8; }
+.starbtn:disabled { opacity: 0.25; cursor: default; }
+.starbtn.on { color: #C98A3E; }
+.starbtn.on svg { fill: rgba(201,138,62,0.85); }
+
+.bookmarks {
+  -webkit-app-region: drag;
+  display: none;
+  align-items: center;
+  gap: 4px;
+  padding: 0 12px 8px 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.bookmarks.on { display: flex; }
+.bookmarks::-webkit-scrollbar { display: none; }
+
+.bm {
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 190px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 7px;
+  background: rgba(237,228,216,0.04);
+  color: #B3A99D;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.bm:hover { background: rgba(237,228,216,0.09); color: #EDE4D8; }
+.bm .bm-title { overflow: hidden; text-overflow: ellipsis; }
+.bm .bm-x {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9C948A;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.bm:hover .bm-x { opacity: 1; }
+.bm .bm-x:hover { background: rgba(184,92,74,0.25); color: #B85C4A; }
+.bm .bm-x svg { width: 8px; height: 8px; }
+
 /* ---------- Sidebar: Gmail / Calendar / Drive, always mounted ---------- */
 
 .sidebar {

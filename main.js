@@ -18,6 +18,7 @@ const CHROME_UA =
 const tabsFile = path.join(app.getPath('userData'), 'tabs.json');
 const historyFile = path.join(app.getPath('userData'), 'history.json');
 const settingsFile = path.join(app.getPath('userData'), 'settings.json');
+const bookmarksFile = path.join(app.getPath('userData'), 'bookmarks.json');
 
 let mainWindow = null;
 let mainSession = null;
@@ -116,7 +117,8 @@ const DEFAULT_SETTINGS = {
   blockWebRTCLeak: true,
   allowNotifications: true,
   allowClipboard: true,
-  clearHistoryOnExit: false
+  clearHistoryOnExit: false,
+  showBookmarksBar: true
 };
 
 let settings = Object.assign({}, DEFAULT_SETTINGS);
@@ -275,6 +277,60 @@ ipcMain.handle('settings-reset', () => {
   return Object.assign({}, settings);
 });
 
+// ---------- Bookmarks ----------
+
+const BOOKMARK_LIMIT = 500;
+let bookmarks = [];      // newest first: { url, title, addedAt }
+
+function loadBookmarks() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(bookmarksFile, 'utf-8'));
+    if (!Array.isArray(raw)) return;
+    // Same rule as settings: only entries shaped the way this code expects.
+    bookmarks = raw
+      .filter((b) => b && typeof b.url === 'string' && /^https?:\/\//i.test(b.url))
+      .map((b) => ({
+        url: b.url,
+        title: typeof b.title === 'string' ? b.title : b.url,
+        addedAt: typeof b.addedAt === 'number' ? b.addedAt : Date.now()
+      }))
+      .slice(0, BOOKMARK_LIMIT);
+  } catch (err) {
+    bookmarks = [];
+  }
+}
+
+function saveBookmarks() {
+  try {
+    fs.writeFileSync(bookmarksFile, JSON.stringify(bookmarks, null, 2));
+  } catch (err) {
+    console.error('Failed to save bookmarks:', err);
+  }
+}
+
+ipcMain.handle('bookmarks-list', () => bookmarks.slice());
+
+ipcMain.handle('bookmarks-add', (event, url, title) => {
+  // Only real web pages: never the new-tab page or an internal page.
+  if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return bookmarks.slice();
+  if (!bookmarks.some((b) => b.url === url)) {
+    bookmarks.unshift({
+      url,
+      title: (typeof title === 'string' && title.trim()) ? title.trim() : url,
+      addedAt: Date.now()
+    });
+    if (bookmarks.length > BOOKMARK_LIMIT) bookmarks.length = BOOKMARK_LIMIT;
+    saveBookmarks();
+  }
+  return bookmarks.slice();
+});
+
+ipcMain.handle('bookmarks-remove', (event, url) => {
+  bookmarks = bookmarks.filter((b) => b.url !== url);
+  saveBookmarks();
+  return bookmarks.slice();
+});
+
 // ---------- Right-click menu ----------
 // Electron ships no context menu whatsoever, so without this there is no
 // copy, no paste, and no open-in-new-tab anywhere in the browser.
@@ -300,6 +356,12 @@ function buildContextMenu(contents, params) {
   if (params.linkURL) {
     items.push({ label: 'Open link in new tab', click: () => openInTab(params.linkURL) });
     items.push({ label: 'Copy link address', click: () => clipboard.writeText(params.linkURL) });
+    items.push({
+      label: 'Bookmark link',
+      click: () => {
+        if (mainWindow) mainWindow.webContents.send('bookmark-url', params.linkURL);
+      }
+    });
     items.push({ type: 'separator' });
   }
 
@@ -378,6 +440,7 @@ function hardenWebContents(contents) {
       else if (key === 'h') name = 'history';
       else if (key === 'j') name = 'downloads';
       else if (key === ',') name = 'settings';
+      else if (key === 'd') name = 'bookmark';
       else if (key === 'tab') name = input.shift ? 'prev-tab' : 'next-tab';
       else if (key === '=' || key === '+') name = 'zoom-in';
       else if (key === '-') name = 'zoom-out';
@@ -796,6 +859,7 @@ app.on('certificate-error', (event, webContents, url, error, certificate, callba
 
 app.whenReady().then(() => {
   loadSettings();
+  loadBookmarks();
   loadHistory();
   setInterval(flushHistory, 15 * 1000);
   mainWindow = createWindow();

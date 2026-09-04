@@ -97,6 +97,36 @@ single Google sign-in covers all five sidebar apps plus regular tabs.
 - **Preferences live in renderer `localStorage`** (sidebar width, per-app
   zoom, per-app layout). Tabs go over IPC to `tabs.json` in userData.
 
+## Internal pages
+
+`INTERNAL_PAGES` in `renderer.js` registers pages that the shell draws
+itself. Settings is one. They are tabs in every visible sense -- title,
+icon, close button, restored across restarts -- but they hold a `panel`
+element instead of a `webview`.
+
+**This is not a stylistic choice.** `will-attach-webview` strips the preload
+from every webview on purpose, so a webview has no bridge to main and could
+never read or write settings. Anything that needs IPC has to be a panel in
+the shell.
+
+Consequences to keep in mind when touching tab code:
+
+- `tab.webview` is null for these. Every use needs a guard; `updateNavButtons`,
+  `runFind`, `applyTabZoom`, `nudgeTabZoom` and the nav buttons all have one.
+- The panel element is static in `index.html`, so `closeTab` removes the
+  `active` class rather than the node, and `openInternalTab` reuses the
+  existing tab instead of opening a second one.
+- They persist as their sentinel (`about:settings`) and are recognised on
+  boot by `internalKindOf`.
+- Typing an address while one is showing opens a *new* tab rather than
+  trying to convert the panel into a website.
+
+## Bookmarks and settings storage
+
+Both live in the main process (`bookmarks.json`, `settings.json`) and both
+validate what they read back: only `http`/`https` URLs are accepted as
+bookmarks, which is what keeps a `javascript:` URL out of a clickable chip.
+
 ## Settings
 
 `DEFAULT_SETTINGS` in `main.js` is the single source of truth; the renderer
