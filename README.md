@@ -9,7 +9,7 @@ install themselves silently in the background.
 ## Installing it
 
 The browser runs from source, launched from the Start Menu like any other
-app. The installed copy lives at `%LOCALAPPDATA%\MyBrowser` and is a git
+app. The installed copy lives at `%USERPROFILE%\MyBrowser` and is a git
 clone of this repository, which is also how it updates itself.
 
 **It must not run from the OneDrive folder.** That is not a preference:
@@ -17,24 +17,31 @@ clone of this repository, which is also how it updates itself.
 | Location | Time to a usable window |
 |---|---|
 | OneDrive | **10.3 seconds** |
-| `%LOCALAPPDATA%\MyBrowser` | **0.36 seconds** |
+| `%USERPROFILE%\MyBrowser` | **0.36 seconds** |
 
 OneDrive Files On-Demand turns every file into a placeholder that its filter
 driver has to service on each read, and starting a browser reads thousands
 of files. Keep the repository wherever you like; run the local clone.
 
+It lives in the profile root rather than under `AppData` on purpose.
+Packaged apps get their `AppData` writes redirected into a private
+per-application container, so an "install" there can end up somewhere only
+that application can see -- which is exactly how this first went wrong: the
+Start Menu shortcut launched, then reported *Unable to find Electron app*,
+because the folder it pointed at did not exist outside the container.
+
 To set it up from scratch:
 
 ```
-git clone https://github.com/ChaosWolfLord/mybrowser.git "$env:LOCALAPPDATA\MyBrowser"
-cd "$env:LOCALAPPDATA\MyBrowser"
+git clone https://github.com/ChaosWolfLord/mybrowser.git "$env:USERPROFILE\MyBrowser"
+cd "$env:USERPROFILE\MyBrowser"
 npm install
 ```
 
 Then make a Start Menu shortcut pointing at
-`%LOCALAPPDATA%\MyBrowser
+`%USERPROFILE%\MyBrowser
 ode_modules\electron\dist\electron.exe`
-with `%LOCALAPPDATA%\MyBrowser` as both the argument and the working
+with `%USERPROFILE%\MyBrowser` as both the argument and the working
 directory. `electron.exe` is a windowed program, so it opens no console.
 
 ## Updating

@@ -33,7 +33,7 @@ single Google sign-in covers all five sidebar apps plus regular tabs.
   | Location | Window on screen |
   |---|---|
   | `OneDrive\Documents\BrowserPersonal\...` | **10,337 ms** |
-  | `%LOCALAPPDATA%\MyBrowser` | **356 ms** |
+  | `%USERPROFILE%\MyBrowser` | **356 ms** |
 
   OneDrive Files On-Demand marks every file a `ReparsePoint`, so each read
   goes through its filter driver; spawning a renderer reads a great many
