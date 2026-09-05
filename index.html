@@ -40,8 +40,18 @@
     <button class="sidebar-toggle" id="sidebar-toggle-btn" title="Toggle Google panel">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg>
     </button>
-    <button class="navbtn" id="menu-btn" title="Menu">
-      <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
+    <button class="navbtn menubtn" id="menu-btn" title="Menu">
+      <svg viewBox="0 0 24 24">
+        <defs>
+          <linearGradient id="menuOrb" x1="0.18" y1="0" x2="0.86" y2="1">
+            <stop offset="0" stop-color="#F2A63F"/>
+            <stop offset="0.52" stop-color="#57AC9C"/>
+            <stop offset="1" stop-color="#9585DC"/>
+          </linearGradient>
+        </defs>
+        <circle cx="12" cy="12" r="8.2" fill="url(#menuOrb)"/>
+        <circle cx="12" cy="12" r="8.2" fill="none" stroke="#F7EEDF" stroke-opacity="0.45" stroke-width="1.3"/>
+      </svg>
     </button>
   </div>
 
@@ -90,6 +100,186 @@
           <button class="overlay-btn" id="settings-reset">Restore defaults</button>
         </div>
         <div class="overlay-list" id="settings-list"></div>
+      </div>
+      <div class="page" id="page-guide">
+        <div class="overlay-head">
+          <span class="overlay-title">Inside My Browser</span>
+          <span class="overlay-spacer"></span>
+        </div>
+        <div class="overlay-list guide">
+          <div class="g-wrap">
+
+            <p class="g-lede">This is a real web browser. It opens tabs, loads any site, blocks trackers, keeps history and bookmarks, and lives in the Start Menu like Chrome does. One person built it. Here is how it actually works.</p>
+            <p class="g-meta"><b>~2,500</b> lines of our code &nbsp;&middot;&nbsp; on top of <b>~30 million</b> lines of someone else's</p>
+
+            <h3><span class="g-num">01</span> Nobody builds a browser from scratch</h3>
+            <p>When you imagine "building a browser", you probably picture writing the part that turns HTML into pixels &mdash; fonts, images, layout, video, encryption. That is one of the hardest things humans have ever written. Chrome's engine took thousands of engineers decades.</p>
+            <p>So we didn't write it. We <b>borrowed</b> it. Chrome's engine is free and open source; it's called <b>Chromium</b>. A toolkit called <b>Electron</b> hands you Chromium in a box plus the ability to write normal desktop-app code around it. Discord, VS Code and Slack are all built this way.</p>
+            <p class="g-rule">Everything hard about <i>displaying a page</i> was already solved. Everything about being a <i>browser</i> &mdash; tabs, an address bar, history, bookmarks, blocking ads &mdash; is the part we wrote.</p>
+            <p>That ratio above isn't cheating. It's how essentially all software works: you stand on a huge pile of existing work and add the part that didn't exist yet.</p>
+
+            <h3><span class="g-num">02</span> The two brains</h3>
+            <p>The most important idea in the whole program. The app is split into <b>two kinds of process</b> &mdash; two separate running programs that talk to each other.</p>
+            <p><b>The main process is the manager.</b> There is exactly one, and it's <code>main.js</code>. It is the only part allowed to touch the actual computer: read and write files, create windows, watch the network. Think of the manager of a restaurant &mdash; access to the safe, the keys.</p>
+            <p><b>The renderer processes are the dining room.</b> They display things. The browser's own interface is one, and <i>every web page you open is another</i>. Ten tabs means roughly ten separate processes. Guests sit here. Guests don't go in the office.</p>
+
+            <div class="g-figure">
+              <svg viewBox="0 0 700 250" role="img" aria-label="The main process on the left holds files, network and windows. A narrow slot labelled preload.js is the only connection to the web pages on the right.">
+                <rect x="6" y="30" width="208" height="186" rx="12" fill="#241D16" stroke="#C98A3E" stroke-width="1.5"/>
+                <text x="20" y="20" fill="#C98A3E" font-family="monospace" font-size="11" letter-spacing="1.4">MAIN PROCESS</text>
+                <text x="20" y="62" fill="#EDE4D8" font-size="17" font-weight="700">The manager</text>
+                <text x="20" y="84" fill="#A79C8F" font-family="monospace" font-size="11">main.js</text>
+                <text x="20" y="120" fill="#A79C8F" font-size="13">&#8226; your files</text>
+                <text x="20" y="144" fill="#A79C8F" font-size="13">&#8226; the network</text>
+                <text x="20" y="168" fill="#A79C8F" font-size="13">&#8226; windows</text>
+                <text x="20" y="192" fill="#A79C8F" font-size="13">&#8226; settings, history</text>
+
+                <rect x="296" y="30" width="96" height="186" rx="10" fill="#201A15" stroke="#6C9A93" stroke-width="1.5"/>
+                <text x="300" y="20" fill="#6C9A93" font-family="monospace" font-size="11" letter-spacing="1.4">THE SLOT</text>
+                <rect x="336" y="92" width="16" height="66" rx="8" fill="#6C9A93" opacity="0.35"/>
+                <text x="344" y="188" fill="#A79C8F" font-family="monospace" font-size="10" text-anchor="middle">preload.js</text>
+                <text x="344" y="204" fill="#766C61" font-size="11" text-anchor="middle">a short list</text>
+
+                <line x1="214" y1="124" x2="294" y2="124" stroke="#C98A3E" stroke-width="1.5" stroke-dasharray="4 4"/>
+                <line x1="394" y1="124" x2="470" y2="124" stroke="#6C9A93" stroke-width="1.5" stroke-dasharray="4 4"/>
+
+                <rect x="472" y="30" width="220" height="54" rx="10" fill="#201A15" stroke="rgba(237,228,216,0.18)"/>
+                <text x="488" y="55" fill="#EDE4D8" font-size="14" font-weight="600">A web page</text>
+                <text x="488" y="73" fill="#766C61" font-size="12">code by a stranger</text>
+
+                <rect x="472" y="96" width="220" height="54" rx="10" fill="#201A15" stroke="rgba(237,228,216,0.18)"/>
+                <text x="488" y="121" fill="#EDE4D8" font-size="14" font-weight="600">A web page</text>
+                <text x="488" y="139" fill="#766C61" font-size="12">its own process</text>
+
+                <rect x="472" y="162" width="220" height="54" rx="10" fill="#201A15" stroke="rgba(237,228,216,0.18)"/>
+                <text x="488" y="187" fill="#EDE4D8" font-size="14" font-weight="600">A web page</text>
+                <text x="488" y="205" fill="#766C61" font-size="12">no keys, no files</text>
+              </svg>
+              <p class="g-cap">Pages on the right never reach the left directly. Everything fits through the slot in the middle, and the slot only accepts a short, fixed list of requests.</p>
+            </div>
+
+            <p><b>Why split them?</b> Two reasons. <i>Crashes stay small</i> &mdash; if a page runs out of memory and dies it takes one process with it, that tab shows an error and nothing else blinks. And <i>websites are strangers</i> &mdash; any page you visit runs code written by someone you have never met, so if that code found a bug in the engine and escaped, you want it landing in a locked room rather than in the process that can read your documents.</p>
+            <p class="g-rule">A web page can never touch your computer directly. It has to ask.</p>
+
+            <h3><span class="g-num">03</span> Asking: the slot in the door</h3>
+            <p>If pages can't touch anything, how does the browser save your tabs when you close it? Through a deliberately tiny opening. Picture a locked door with a narrow slot: you can pass a note through, you cannot climb through. Our slot is <code>preload.js</code>, and it is short on purpose:</p>
+            <ul>
+              <li>save my list of tabs, or give it back</li>
+              <li>add a page to history, or search history</li>
+              <li>list, add or remove a bookmark</li>
+              <li>read a setting, or change one</li>
+              <li>tell me when a download's progress changes</li>
+            </ul>
+            <p>Notice what is <i>not</i> there: "read any file", "run any program", "delete this folder". Those were never offered, so they can never be requested. A door with no handle can't be picked.</p>
+            <p>That list lives in one small file, so anyone checking this browser's security can read it and know the <i>complete</i> set of things a page could ever ask for. Making the dangerous surface <b>small enough to read in one sitting</b> is often better security than making it clever.</p>
+
+            <h3><span class="g-num">04</span> A tab is a browser inside a browser</h3>
+            <p>The browser window is itself a web page. The tab strip, the address bar, the buttons &mdash; that's HTML and CSS in <code>index.html</code> and <code>styles.css</code>, styled the way any website is.</p>
+            <p>So how do you put a website <i>inside</i> a website? A special element called a <code>&lt;webview&gt;</code>: like a frame with much stronger walls, with its own process and no access to the page containing it. Each tab is one; the five sidebar apps are five more.</p>
+            <p>This causes a problem that took real debugging to spot. Because a webview is a separate program, <b>keys pressed inside a page never reach the browser's interface</b>. Press Ctrl+F while reading an article and the shortcut simply wouldn't happen. The fix: the manager listens for keys <i>before</i> the page gets them, swallows the ones we've claimed, and re-sends them to the interface as messages. It works so smoothly you'd never guess &mdash; which is also why this kind of bug survives to release if nobody tests shortcuts while actually reading a page.</p>
+
+            <h3><span class="g-num">05</span> Where your stuff lives</h3>
+            <p>Nothing is in the cloud. Nothing sits on anyone's server. It is all files on this computer, in the app's data folder.</p>
+            <table class="g-table">
+              <tr><td>tabs.json</td><td>Which tabs were open, so they come back</td></tr>
+              <tr><td>history.json</td><td>Pages you've visited &mdash; the last 5,000</td></tr>
+              <tr><td>bookmarks.json</td><td>Saved pages, with their icons</td></tr>
+              <tr><td>settings.json</td><td>Every switch on the settings page</td></tr>
+              <tr><td>Partitions/main/</td><td>Cookies and logins &mdash; what keeps you signed in</td></tr>
+            </table>
+            <p>You can open the first four in Notepad. They're just text. Being able to read your own data is a feature.</p>
+            <p>One detail is more interesting than it looks: <b>history isn't written to disk every time you visit a page.</b> It's held in memory and saved every 15 seconds, plus when you quit. Saving on every navigation would rewrite the whole file dozens of times a minute for nothing. Writing <i>less often</i> is part of what makes it feel instant.</p>
+
+            <h3><span class="g-num">06</span> Not trusting web pages</h3>
+            <p>Beyond the two-process split, the browser actively defends you. Every one of these is a switch on the settings page.</p>
+            <dl class="g-defs">
+              <dt>Tracker and ad blocking</dt>
+              <dd>Before <i>any</i> request leaves your computer it's checked against a list of known tracking and ad servers. A match is cancelled &mdash; the request never happens. A privacy feature that also happens to be the biggest speed-up available, because a shocking amount of a slow page is other people's analytics.</dd>
+              <dt>Tracking-tag stripping</dt>
+              <dd>Links ending in <code>?utm_source=&hellip;</code> or <code>fbclid=&hellip;</code> carry tags that don't change the page; they exist to tell the site where you came from. About 25 of them are quietly removed.</dd>
+              <dt>HTTPS upgrade</dt>
+              <dd><code>http://</code> means anyone on the same Wi-Fi can read what you send. <code>https://</code> is encrypted. Ask for the first, get the second.</dd>
+              <dt>Permissions default to no</dt>
+              <dd>A page asking for camera, microphone or location is refused instantly &mdash; you aren't even interrupted with a popup. Only notifications and clipboard are allowed, and both have switches.</dd>
+              <dt>WebRTC leak protection</dt>
+              <dd>There's a video-call feature in every browser that pages can abuse to learn your computer's address on the local network, <i>even through a VPN</i>. It's confined so they can't.</dd>
+              <dt>Downloads that won't run</dt>
+              <dd>Files save normally, but download a <code>.exe</code> and the Open button becomes Show: it opens the folder, not the program. Running something dangerous should take a deliberate step outside the browser.</dd>
+            </dl>
+
+            <h3><span class="g-num">07</span> Making it fast, and a ten-second mystery</h3>
+            <p><b>Nothing loads until you look at it.</b> The five sidebar apps used to all load the instant the browser opened. Now each waits until you first click it. Restored tabs work the same way: reopen with twelve tabs and only the one you were last looking at loads &mdash; the other eleven are names until clicked.</p>
+            <p><b>The window appears before it's finished.</b> It shows immediately and fills in, because a window that appears instantly and populates feels far faster than a correct window half a second later. Perceived speed and actual speed are different things, and only one of them is what you feel.</p>
+            <p>Now the story. At one point the browser took <b>ten full seconds</b> to open. The obvious suspect was the tracker blocker, since it inspects every request. Instead of guessing, we measured: it cost <b>8.9 milliseconds across 577 requests</b>, about 0.015ms each. Not the problem, not close.</p>
+            <p>So we loaded a <b>completely blank page</b>. No tabs, no sidebar, no blocking. Ten seconds. That result is what cracked it &mdash; if an empty page is just as slow, the problem cannot be in the code, because there <i>is</i> no code running. It was the folder: the project sat in OneDrive, where files are placeholders fetched on demand, and starting a browser reads thousands of files.</p>
+
+            <div class="g-bars">
+              <div class="g-bar">
+                <div class="g-barlab"><span>In the OneDrive folder</span><b>10,337 ms</b></div>
+                <div class="g-track"><div class="g-fill g-slow"></div></div>
+              </div>
+              <div class="g-bar">
+                <div class="g-barlab"><span>In a normal folder</span><b>356 ms</b></div>
+                <div class="g-track"><div class="g-fill g-fast"></div></div>
+              </div>
+              <p class="g-verdict">Same code. 29&times; faster. The fix was moving a folder.</p>
+            </div>
+
+            <p class="g-rule">When something is slow, find out <i>where</i> before deciding <i>what</i>. And try the empty version &mdash; what a program does when it does nothing tells you what it costs before it even starts.</p>
+
+            <h3><span class="g-num">08</span> How it updates itself</h3>
+            <p>There's no download page. The browser's own folder is a <b>git repository</b> connected to the copy on GitHub. Thirty seconds after it opens, and every four hours after, it quietly checks for new code and pulls it. Next time you open the browser you're running the new version &mdash; never asked, never interrupted, no progress bar.</p>
+            <p>One safety catch: it only accepts changes that stack cleanly on what's already there. If someone edited the files locally the update <b>fails loudly</b> rather than overwriting their work. A tool that silently destroys your changes in order to stay up to date is a bad tool.</p>
+
+            <h3><span class="g-num">09</span> The map</h3>
+            <table class="g-table">
+              <tr><td>main.js</td><td>The manager. Windows, security, network filtering, history, downloads, bookmarks, settings, updates</td></tr>
+              <tr><td>preload.js</td><td>The slot in the door &mdash; the complete list of what the interface may ask for</td></tr>
+              <tr><td>index.html</td><td>The shape of the window: tab strip, address bar, sidebar</td></tr>
+              <tr><td>renderer.js</td><td>The interface's brain. Tabs, address bar, find, zoom, bookmarks, settings, this page</td></tr>
+              <tr><td>styles.css</td><td>Every colour, size and animation</td></tr>
+              <tr><td>newtab.html</td><td>The new tab page, including the colour fields that move away from your mouse</td></tr>
+              <tr><td>icon.svg</td><td>The app icon &mdash; the orb on the menu button</td></tr>
+            </table>
+
+            <h3><span class="g-num">10</span> Things that surprised us</h3>
+            <p>Real bugs from building this. Every one generalises well beyond browsers.</p>
+
+            <div class="g-lesson">
+              <h4>The browser was showing an old Gmail</h4>
+              <p>Sidebar Gmail looked years out of date. Not a layout problem: every browser announces what it is, and this one announced a version of Chrome from two years earlier, because that text had been typed by hand once and never updated. Google serves a stripped-down interface to browsers it thinks are ancient.</p>
+              <p class="g-take">Anything you write down by hand will eventually become a lie. Ask the program what version it is instead of telling it.</p>
+            </div>
+
+            <div class="g-lesson">
+              <h4>A search box that silently did nothing</h4>
+              <p>A security rule was added listing what the new tab page is allowed to do. It was slightly too strict and accidentally banned the page's own search box from submitting. No error, no warning &mdash; pressing Enter just did nothing.</p>
+              <p class="g-take">Security rules break features silently. That's exactly what makes them dangerous to add without testing.</p>
+            </div>
+
+            <div class="g-lesson">
+              <h4>Links that opened nothing</h4>
+              <p>Clicking an "opens in a new tab" link did nothing for weeks. The code handling it was listening for an event Electron had <i>deleted</i> three versions earlier. The code was perfectly correct &mdash; it was waiting for a phone call that would never come.</p>
+              <p class="g-take">Code that stops being called doesn't announce itself. It just goes quiet.</p>
+            </div>
+
+            <div class="g-lesson">
+              <h4>Making it faster made it less safe</h4>
+              <p>The tracker blocker was sped up by reading web addresses with a shortcut instead of parsing them properly. Four times faster &mdash; and it meant a tracker could disguise itself with a crafted address and walk straight past the blocklist. Caught only because the new version was tested <i>against the old one</i> rather than just timed.</p>
+              <p class="g-take">Fast and correct are different goals, and speeding something up is a great way to quietly break it.</p>
+            </div>
+
+            <div class="g-lesson">
+              <h4>An app that couldn't find itself</h4>
+              <p>The Start Menu shortcut launched and immediately reported it couldn't find the app. Both halves of the shortcut pointed at the same folder &mdash; except one had been quietly redirected somewhere else, so the same text meant two different places.</p>
+              <p class="g-take">"It works on my machine" usually means the machine, not the code.</p>
+            </div>
+
+            <p class="g-close">None of the individual pieces here are magic. A tab is a page inside a page. Saving is writing a file. Blocking an ad is checking a name against a list and saying no. What makes it a <i>browser</i> is that a few hundred small, understandable decisions are stacked up and made to work together &mdash; then hammered on until the rough edges are gone.</p>
+            <p class="g-close g-last">That's most software. Not one brilliant idea, but a lot of ordinary ideas arranged carefully, plus the patience to keep going after the tenth weird bug. The tenth weird bug is where you learn the most anyway.</p>
+
+          </div>
+        </div>
       </div>
     </div>
 

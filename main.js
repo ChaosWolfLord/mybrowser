@@ -837,6 +837,7 @@ async function clearData(kind) {
 ipcMain.handle('app-menu', () => {
   Menu.buildFromTemplate([
     { label: 'Settings', accelerator: 'Ctrl+,', click: () => sendShortcut('settings') },
+    { label: 'Inside My Browser', click: () => sendShortcut('guide') },
     { type: 'separator' },
     { label: 'History', accelerator: 'Ctrl+H', click: () => sendShortcut('history') },
     { label: 'Downloads', accelerator: 'Ctrl+J', click: () => sendShortcut('downloads') },

@@ -573,6 +573,130 @@ html, body {
 .starbtn.on { color: #C98A3E; }
 .starbtn.on svg { fill: rgba(201,138,62,0.85); }
 
+/* The menu button carries the app's mark rather than a generic kebab, so
+   the control that opens the browser's own things looks like the browser. */
+.menubtn svg { width: 18px; height: 18px; opacity: 0.92; transition: opacity 0.15s ease; }
+.menubtn:hover svg { opacity: 1; }
+
+/* ---------- The guide page ---------- */
+
+.guide { padding: 0; }
+.g-wrap {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 26px 28px 80px 28px;
+  font-size: 14px;
+  line-height: 1.72;
+  color: #C5BBAE;
+}
+.g-lede { font-size: 17px; line-height: 1.6; color: #EDE4D8; margin: 0 0 10px; }
+.g-meta { font-size: 11.5px; color: #6E6862; margin: 0 0 30px; }
+.g-meta b { color: #C98A3E; font-weight: 600; }
+
+.g-wrap h3 {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  color: #F3EBE0;
+  margin: 40px 0 12px 0;
+}
+.g-num { font-size: 11px; font-weight: 700; color: #C98A3E; letter-spacing: 0.08em; }
+.g-wrap h4 { font-size: 14px; font-weight: 600; color: #F3EBE0; margin: 0 0 5px; }
+.g-wrap p { margin: 0 0 13px; }
+.g-wrap b { color: #EDE4D8; font-weight: 600; }
+.g-wrap code {
+  font-family: ui-monospace, Consolas, "Cascadia Mono", monospace;
+  font-size: 12px;
+  background: #2A231D;
+  border: 1px solid rgba(237,228,216,0.1);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: #E8A24A;
+}
+.g-wrap ul { margin: 0 0 13px; padding-left: 20px; }
+.g-wrap li { margin-bottom: 5px; }
+.g-wrap li::marker { color: #C98A3E; }
+
+.g-rule {
+  border-left: 3px solid #C98A3E;
+  padding: 8px 0 8px 14px;
+  margin: 18px 0;
+  color: #F3EBE0;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.g-figure { margin: 20px 0; }
+.g-figure svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #201A15;
+  border: 1px solid rgba(237,228,216,0.1);
+  border-radius: 10px;
+  padding: 10px;
+}
+.g-cap { font-size: 12px; color: #6E6862; margin: 8px 0 0; }
+
+.g-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+.g-table td {
+  padding: 8px 12px 8px 0;
+  border-bottom: 1px solid rgba(237,228,216,0.08);
+  vertical-align: top;
+}
+.g-table tr:last-child td { border-bottom: none; }
+.g-table td:first-child {
+  font-family: ui-monospace, Consolas, "Cascadia Mono", monospace;
+  font-size: 12px;
+  color: #6C9A93;
+  white-space: nowrap;
+  padding-right: 18px;
+}
+
+.g-defs { margin: 16px 0; }
+.g-defs dt { color: #F3EBE0; font-weight: 600; margin-top: 15px; }
+.g-defs dd { margin: 3px 0 0; }
+
+.g-bars {
+  background: #201A15;
+  border: 1px solid rgba(237,228,216,0.1);
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin: 18px 0;
+}
+.g-bar { margin-bottom: 14px; }
+.g-barlab {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 11.5px;
+  color: #968D83;
+  margin-bottom: 6px;
+}
+.g-barlab b { color: #EDE4D8; font-size: 13px; font-variant-numeric: tabular-nums; }
+.g-track { height: 10px; background: rgba(237,228,216,0.06); border-radius: 5px; overflow: hidden; }
+.g-fill { height: 100%; border-radius: 5px; }
+/* Widths are to scale: 356 / 10337 = 3.4%. The tiny bar is the point. */
+.g-slow { width: 100%; background: linear-gradient(90deg, #B85C4A, #C98A3E); }
+.g-fast { width: 3.4%; min-width: 7px; background: #6C9A93; }
+.g-verdict { margin: 0; color: #E8A24A; font-weight: 600; font-size: 13px; }
+
+.g-lesson { margin: 22px 0; }
+.g-take {
+  border-left: 2px solid #8B7EC8;
+  padding-left: 12px;
+  font-style: italic;
+  color: #EDE4D8;
+  margin: 0;
+}
+
+.g-close { font-size: 15px; color: #D8CEC1; margin-top: 18px; }
+.g-last { color: #E8A24A; font-weight: 600; }
+
 .bookmarks {
   -webkit-app-region: drag;
   display: none;

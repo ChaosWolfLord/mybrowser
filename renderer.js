@@ -100,6 +100,12 @@ const INTERNAL_PAGES = {
     panelId: 'page-settings',
     sentinel: 'about:settings',
     icon: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='9' fill='none' stroke='%23C98A3E' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='3.2' fill='%23C98A3E'/%3E%3C/svg%3E"
+  },
+  guide: {
+    title: 'Inside My Browser',
+    panelId: 'page-guide',
+    sentinel: 'about:guide',
+    icon: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cdefs%3E%3ClinearGradient id='o' x1='0.18' y1='0' x2='0.86' y2='1'%3E%3Cstop offset='0' stop-color='%23F2A63F'/%3E%3Cstop offset='0.52' stop-color='%2357AC9C'/%3E%3Cstop offset='1' stop-color='%239585DC'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='12' cy='12' r='9' fill='url(%23o)'/%3E%3C/svg%3E"
   }
 };
 
@@ -1395,6 +1401,7 @@ const SHORTCUTS = {
   history: toggleHistory,
   downloads: toggleDownloads,
   settings: openSettings,
+  guide: () => openInternalTab('guide'),
   bookmark: () => toggleBookmark(),
   escape: () => { closeFind(); closeHistory(); closeDownloads(); },
   'next-tab': () => cycleTab(1),

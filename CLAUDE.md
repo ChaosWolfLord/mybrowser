@@ -120,7 +120,11 @@ single Google sign-in covers all five sidebar apps plus regular tabs.
 ## Internal pages
 
 `INTERNAL_PAGES` in `renderer.js` registers pages that the shell draws
-itself. Settings is one. They are tabs in every visible sense -- title,
+itself. Settings is one; the `guide` page (`HOW-IT-WORKS.md` rewritten as
+markup, opened from the menu) is the other. Its content is inline in
+`index.html` rather than fetched, because the shell's CSP has no
+`connect-src` and adding one to load a static local file would be a worse
+trade than a longer file. They are tabs in every visible sense -- title,
 icon, close button, restored across restarts -- but they hold a `panel`
 element instead of a `webview`.
 
