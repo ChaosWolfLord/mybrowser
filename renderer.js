@@ -1081,8 +1081,10 @@ if (downloadsApi) {
 }
 
 document.getElementById('downloads-btn').addEventListener('click', toggleDownloads);
-document.getElementById('menu-btn').addEventListener('click', () => {
-  window.tabStore?.showAppMenu?.();
+document.getElementById('menu-btn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (menuOpen) closeMenu();
+  else openAppMenu();
 });
 
 // After a sign-out the panels are still showing the signed-in pages they
@@ -1387,6 +1389,207 @@ document.getElementById('sidebar-collapse').addEventListener('click', toggleSide
 document.getElementById('sidebar-toggle-btn').addEventListener('click', toggleSidebar);
 setSidebarCollapsed(readPref('sidebarCollapsed', false));
 
+// ---------- Menus ----------
+// Both the toolbar menu and every right-click menu are drawn here, in the
+// browser's own styling. Electron's native menu is a grey Windows menu that
+// looks like it belongs to a different program.
+
+const menuEl = document.getElementById('menu');
+let menuOpen = false;
+
+function closeMenu() {
+  if (!menuOpen) return;
+  menuOpen = false;
+  menuEl.classList.remove('open');
+  menuEl.innerHTML = '';
+  dragShield.classList.remove('active', 'plain');
+}
+
+function showMenu(items, x, y, options) {
+  const opts = options || {};
+  closeMenu();
+  menuEl.innerHTML = '';
+
+  items.forEach((item) => {
+    if (item.type === 'separator') {
+      const sep = document.createElement('div');
+      sep.className = 'menu-sep';
+      menuEl.appendChild(sep);
+      return;
+    }
+
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'menu-item' + (item.danger ? ' danger' : '');
+    row.setAttribute('role', 'menuitem');
+    if (item.enabled === false) row.disabled = true;
+
+    const label = document.createElement('span');
+    label.className = 'menu-label';
+    label.textContent = item.label;
+    row.appendChild(label);
+
+    if (item.accel) {
+      const accel = document.createElement('span');
+      accel.className = 'menu-accel';
+      accel.textContent = item.accel;
+      row.appendChild(accel);
+    }
+
+    row.addEventListener('click', () => {
+      closeMenu();
+      if (item.click) item.click();
+    });
+    menuEl.appendChild(row);
+  });
+
+  // Shown at the origin first so it can be measured, then moved to where it
+  // actually fits -- a menu opened near an edge has to come back inside.
+  menuEl.style.left = '0px';
+  menuEl.style.top = '0px';
+  menuEl.classList.add('open');
+  menuOpen = true;
+
+  // A click meant to dismiss the menu usually lands on a page, which is its
+  // own renderer and never tells this window. The shield catches it.
+  dragShield.classList.add('active', 'plain');
+
+  const rect = menuEl.getBoundingClientRect();
+  const wantLeft = opts.anchorRight ? x - rect.width : x;
+  const left = Math.max(6, Math.min(wantLeft, window.innerWidth - rect.width - 6));
+  const top = Math.max(6, Math.min(y, window.innerHeight - rect.height - 6));
+  menuEl.style.left = left + 'px';
+  menuEl.style.top = top + 'px';
+
+  const first = menuEl.querySelector('.menu-item:not(:disabled)');
+  if (first) first.focus();
+}
+
+dragShield.addEventListener('mousedown', () => closeMenu());
+window.addEventListener('blur', closeMenu);
+window.addEventListener('resize', closeMenu);
+
+function copyText(text) {
+  if (text) window.tabStore?.clipboardWrite?.(String(text));
+}
+
+// ---------- The toolbar menu ----------
+
+function openAppMenu() {
+  const anchor = document.getElementById('menu-btn').getBoundingClientRect();
+  showMenu([
+    { label: 'Settings', accel: 'Ctrl+,', click: openSettings },
+    { label: 'Inside My Browser', click: () => openInternalTab('guide') },
+    { type: 'separator' },
+    { label: 'History', accel: 'Ctrl+H', click: toggleHistory },
+    { label: 'Downloads', accel: 'Ctrl+J', click: toggleDownloads },
+    { type: 'separator' },
+    { label: 'Sign out of all sites\u2026', danger: true, click: () => window.tabStore?.clearData('signout') },
+    { label: 'Clear cache', click: () => window.tabStore?.clearData('cache') },
+    { label: 'Clear browsing history\u2026', danger: true, click: () => window.tabStore?.clearData('history') }
+  ], anchor.right, anchor.bottom + 6, { anchorRight: true });
+}
+
+// ---------- Right-click menus ----------
+
+// main.js sends the id of the webContents that was clicked; this finds the
+// element it belongs to, which is what the menu gets positioned over.
+function webviewById(wcId) {
+  const all = tabs.map((t) => t.webview).filter(Boolean).concat(Object.values(sbPanels));
+  return all.find((wv) => {
+    try {
+      return wv.getWebContentsId() === wcId;
+    } catch (err) {
+      return false;   // not attached yet
+    }
+  }) || null;
+}
+
+// Click coordinates arrive in the page's own pixels, so a zoomed panel
+// needs them scaled or the menu lands away from the pointer.
+function zoomOf(wv) {
+  try {
+    const z = wv.getZoomFactor();
+    return typeof z === 'number' && z > 0 ? z : 1;
+  } catch (err) {
+    return 1;
+  }
+}
+
+function contextItemsFor(wv, p) {
+  const items = [];
+  const call = (fn) => { try { fn(); } catch (err) {} };
+
+  if (p.linkURL) {
+    items.push({ label: 'Open link in new tab', click: () => createTab(p.linkURL) });
+    items.push({ label: 'Copy link address', click: () => copyText(p.linkURL) });
+    items.push({ label: 'Bookmark link', click: () => toggleBookmark(p.linkURL) });
+    items.push({ type: 'separator' });
+  }
+
+  if (p.mediaType === 'image' && p.srcURL) {
+    items.push({ label: 'Open image in new tab', click: () => createTab(p.srcURL) });
+    items.push({ label: 'Copy image', click: () => call(() => wv.copyImageAt(p.x, p.y)) });
+    items.push({ label: 'Copy image address', click: () => copyText(p.srcURL) });
+    items.push({ type: 'separator' });
+  }
+
+  if (p.isEditable) {
+    items.push({ label: 'Undo', accel: 'Ctrl+Z', enabled: p.editFlags.canUndo, click: () => call(() => wv.undo()) });
+    items.push({ label: 'Redo', accel: 'Ctrl+Y', enabled: p.editFlags.canRedo, click: () => call(() => wv.redo()) });
+    items.push({ type: 'separator' });
+    items.push({ label: 'Cut', accel: 'Ctrl+X', enabled: p.editFlags.canCut, click: () => call(() => wv.cut()) });
+    items.push({ label: 'Copy', accel: 'Ctrl+C', enabled: p.editFlags.canCopy, click: () => call(() => wv.copy()) });
+    items.push({ label: 'Paste', accel: 'Ctrl+V', enabled: p.editFlags.canPaste, click: () => call(() => wv.paste()) });
+    items.push({ type: 'separator' });
+    items.push({ label: 'Select all', accel: 'Ctrl+A', click: () => call(() => wv.selectAll()) });
+  } else if (p.selectionText) {
+    items.push({ label: 'Copy', accel: 'Ctrl+C', click: () => call(() => wv.copy()) });
+    const short = p.selectionText.length > 26
+      ? p.selectionText.slice(0, 26) + '\u2026'
+      : p.selectionText;
+    items.push({
+      label: 'Search Google for "' + short + '"',
+      click: () => createTab('https://www.google.com/search?q=' + encodeURIComponent(p.selectionText))
+    });
+    items.push({ type: 'separator' });
+    items.push({ label: 'Select all', accel: 'Ctrl+A', click: () => call(() => wv.selectAll()) });
+  } else if (!p.linkURL && p.mediaType !== 'image') {
+    let back = false;
+    let forward = false;
+    try { back = wv.canGoBack(); forward = wv.canGoForward(); } catch (err) {}
+    items.push({ label: 'Back', enabled: back, click: () => call(() => wv.goBack()) });
+    items.push({ label: 'Forward', enabled: forward, click: () => call(() => wv.goForward()) });
+    items.push({ label: 'Reload', accel: 'Ctrl+R', click: () => call(() => wv.reload()) });
+    items.push({ type: 'separator' });
+    items.push({ label: 'Copy page address', click: () => call(() => copyText(wv.getURL())) });
+  }
+
+  items.push({ type: 'separator' });
+  items.push({ label: 'Inspect element', click: () => call(() => wv.inspectElement(p.x, p.y)) });
+  return items;
+}
+
+window.tabStore?.onContextMenu?.((payload) => {
+  const p = payload && payload.params;
+  if (!p) return;
+
+  const wv = webviewById(payload.wcId);
+
+  if (!wv) {
+    // The shell's own pages -- settings, the guide, the chrome. There is no
+    // webview to act on, so offer only what makes sense here.
+    const selected = String(window.getSelection() || '').trim();
+    if (!selected) return;
+    showMenu([{ label: 'Copy', accel: 'Ctrl+C', click: () => copyText(selected) }], p.x, p.y);
+    return;
+  }
+
+  const rect = wv.getBoundingClientRect();
+  const zoom = zoomOf(wv);
+  showMenu(contextItemsFor(wv, p), rect.left + p.x * zoom, rect.top + p.y * zoom);
+});
+
 // ---------- Keyboard shortcuts ----------
 
 // A key pressed while a page has focus never reaches this window, so
@@ -1403,7 +1606,7 @@ const SHORTCUTS = {
   settings: openSettings,
   guide: () => openInternalTab('guide'),
   bookmark: () => toggleBookmark(),
-  escape: () => { closeFind(); closeHistory(); closeDownloads(); },
+  escape: () => { closeMenu(); closeFind(); closeHistory(); closeDownloads(); },
   'next-tab': () => cycleTab(1),
   'prev-tab': () => cycleTab(-1),
   'zoom-in': () => nudgeTabZoom(0.1),
@@ -1419,7 +1622,7 @@ function runShortcut(name) {
 window.tabStore?.onShortcut?.(runShortcut);
 
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeFind(); closeHistory(); closeDownloads(); return; }
+  if (e.key === 'Escape') { closeMenu(); closeFind(); closeHistory(); closeDownloads(); return; }
 
   const mod = e.metaKey || e.ctrlKey;
   if (!mod) return;

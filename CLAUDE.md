@@ -117,6 +117,31 @@ single Google sign-in covers all five sidebar apps plus regular tabs.
 - **Preferences live in renderer `localStorage`** (sidebar width, per-app
   zoom, per-app layout). Tabs go over IPC to `tabs.json` in userData.
 
+## Menus are drawn by the renderer
+
+Both the toolbar menu and every right-click menu are HTML in `renderer.js`,
+not `Menu.buildFromTemplate().popup()`. Electron's native menu is a grey
+Windows menu that looks like it belongs to a different program, and there is
+no way to style it.
+
+- `main.js` only forwards: `context-menu` sends `{ wcId, params }`, with
+  `pickMenuParams` flattening and type-checking the fields the menu uses
+  instead of passing Chromium's params object across.
+- The renderer finds the element by matching `wv.getWebContentsId()` against
+  `wcId`, then positions the menu at the webview's rect plus the click
+  coordinates **scaled by that panel's zoom** -- the coordinates arrive in
+  the page's own pixels, so a zoomed sidebar panel would otherwise place the
+  menu away from the pointer.
+- Dismissing needs `#drag-shield`. A click aimed at closing the menu usually
+  lands on a page, which is its own renderer and never tells this window.
+- When `wcId` matches no webview the click was on the shell itself -- the
+  settings or guide page -- and there is no webview to act on, so only Copy
+  is offered, and only when something is selected.
+- `clipboard.writeText` stays in main, reached over `clipboard-write`.
+- Confirmation dialogs (sign out, clear history) are still native
+  `dialog.showMessageBox`, which is right: a modal confirmation should look
+  like the system asking.
+
 ## Internal pages
 
 `INTERNAL_PAGES` in `renderer.js` registers pages that the shell draws

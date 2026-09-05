@@ -801,6 +801,65 @@ html, body {
   display: none;
 }
 .drag-shield.active { display: block; }
+/* The shield is also what catches a click aimed at dismissing a menu: a
+   click inside a page would otherwise never reach this window at all. */
+.drag-shield.plain { cursor: default; }
+
+/* ---------- Menus ---------- */
+/* Drawn here rather than by the OS. A native Windows menu is grey and
+   square and looks like it belongs to a different program. */
+
+.menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 192px;
+  max-width: 320px;
+  display: none;
+  flex-direction: column;
+  padding: 5px;
+  background: #2A231D;
+  border: 1px solid rgba(237,228,216,0.14);
+  border-radius: 10px;
+  box-shadow: 0 14px 38px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.05);
+}
+.menu.open { display: flex; }
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  width: 100%;
+  padding: 0 10px;
+  height: 30px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #E4DACE;
+  font-family: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.menu-item:hover:not(:disabled) { background: rgba(201,138,62,0.18); color: #FBF4E9; }
+.menu-item:focus-visible { outline: 2px solid rgba(201,138,62,0.7); outline-offset: -2px; }
+.menu-item:disabled { color: #6E6862; cursor: default; }
+.menu-item.danger:hover:not(:disabled) { background: rgba(184,92,74,0.22); color: #F0D6CE; }
+
+.menu-label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.menu-accel {
+  font-family: ui-monospace, Consolas, "Cascadia Mono", monospace;
+  font-size: 10.5px;
+  color: #766C61;
+  flex-shrink: 0;
+}
+.menu-item:hover:not(:disabled) .menu-accel { color: #A79C8F; }
+
+.menu-sep {
+  height: 1px;
+  margin: 5px 8px;
+  background: rgba(237,228,216,0.1);
+}
 
 /* Per-app zoom controls, pinned below the panels. */
 .sidebar-foot {

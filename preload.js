@@ -22,7 +22,11 @@ contextBridge.exposeInMainWorld('tabStore', {
     remove: (url) => ipcRenderer.invoke('history-remove', url),
     clear: () => ipcRenderer.invoke('history-clear')
   },
-  showAppMenu: () => ipcRenderer.invoke('app-menu'),
+  clipboardWrite: (text) => ipcRenderer.invoke('clipboard-write', text),
+  // Where the user right-clicked, so the renderer can draw the menu there.
+  onContextMenu: (callback) => {
+    ipcRenderer.on('context-menu', (event, payload) => callback(payload));
+  },
   clearData: (kind) => ipcRenderer.invoke('clear-data', kind),
   bookmarks: {
     list: () => ipcRenderer.invoke('bookmarks-list'),

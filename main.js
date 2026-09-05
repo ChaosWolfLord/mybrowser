@@ -1,4 +1,4 @@
-const { app, BrowserWindow, session, ipcMain, Menu, clipboard, shell, dialog } = require('electron');
+const { app, BrowserWindow, session, ipcMain, clipboard, shell, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
@@ -356,71 +356,36 @@ ipcMain.handle('bookmarks-remove', (event, url) => {
 });
 
 // ---------- Right-click menu ----------
-// Electron ships no context menu whatsoever, so without this there is no
-// copy, no paste, and no open-in-new-tab anywhere in the browser.
+// The menu is drawn by the renderer in the browser's own styling. Electron
+// pops a native Windows menu, which is grey and square and looks like it
+// belongs to a different program entirely. Main's only job here is to hand
+// over what was clicked.
 
-function canGo(contents, direction) {
-  try {
-    const nav = contents.navigationHistory;
-    if (nav) return direction === 'back' ? nav.canGoBack() : nav.canGoForward();
-    return direction === 'back' ? contents.canGoBack() : contents.canGoForward();
-  } catch (err) {
-    return false;
-  }
+// Only the fields the menu actually uses cross the wire, flattened and
+// type-checked, rather than passing Chromium's params object straight through.
+function pickMenuParams(params) {
+  const flags = params.editFlags || {};
+  return {
+    x: params.x,
+    y: params.y,
+    linkURL: params.linkURL || '',
+    srcURL: params.srcURL || '',
+    mediaType: params.mediaType || 'none',
+    selectionText: (params.selectionText || '').trim(),
+    isEditable: !!params.isEditable,
+    editFlags: {
+      canUndo: !!flags.canUndo,
+      canRedo: !!flags.canRedo,
+      canCut: !!flags.canCut,
+      canCopy: !!flags.canCopy,
+      canPaste: !!flags.canPaste
+    }
+  };
 }
 
-function openInTab(url) {
-  if (mainWindow && /^https?:\/\//i.test(url)) mainWindow.webContents.send('open-url', url);
-}
-
-function buildContextMenu(contents, params) {
-  const items = [];
-  const sel = (params.selectionText || '').trim();
-
-  if (params.linkURL) {
-    items.push({ label: 'Open link in new tab', click: () => openInTab(params.linkURL) });
-    items.push({ label: 'Copy link address', click: () => clipboard.writeText(params.linkURL) });
-    items.push({
-      label: 'Bookmark link',
-      click: () => {
-        if (mainWindow) mainWindow.webContents.send('bookmark-url', params.linkURL);
-      }
-    });
-    items.push({ type: 'separator' });
-  }
-
-  if (params.mediaType === 'image' && params.srcURL) {
-    items.push({ label: 'Open image in new tab', click: () => openInTab(params.srcURL) });
-    items.push({ label: 'Copy image', click: () => contents.copyImageAt(params.x, params.y) });
-    items.push({ label: 'Copy image address', click: () => clipboard.writeText(params.srcURL) });
-    items.push({ type: 'separator' });
-  }
-
-  if (params.isEditable) {
-    items.push({ role: 'undo' }, { role: 'redo' }, { type: 'separator' },
-                { role: 'cut' }, { role: 'copy' }, { role: 'paste' },
-                { type: 'separator' }, { role: 'selectAll' });
-  } else if (sel) {
-    items.push({ role: 'copy' });
-    const short = sel.length > 30 ? sel.slice(0, 30) + '...' : sel;
-    items.push({
-      label: `Search Google for "${short}"`,
-      click: () => openInTab('https://www.google.com/search?q=' + encodeURIComponent(sel))
-    });
-    items.push({ type: 'separator' }, { role: 'selectAll' });
-  } else if (!params.linkURL && params.mediaType !== 'image') {
-    items.push({ label: 'Back', enabled: canGo(contents, 'back'), click: () => contents.goBack() });
-    items.push({ label: 'Forward', enabled: canGo(contents, 'forward'), click: () => contents.goForward() });
-    items.push({ label: 'Reload', click: () => contents.reload() });
-    items.push({ type: 'separator' });
-    items.push({ label: 'Copy page address', click: () => clipboard.writeText(contents.getURL()) });
-  }
-
-  items.push({ type: 'separator' });
-  items.push({ label: 'Inspect element', click: () => contents.inspectElement(params.x, params.y) });
-
-  return Menu.buildFromTemplate(items);
-}
+ipcMain.handle('clipboard-write', (event, text) => {
+  clipboard.writeText(typeof text === 'string' ? text : '');
+});
 
 // Applied to every webContents the app ever creates, including each
 // <webview>. This is the part that matters most: `webviewTag` is on, so
@@ -477,7 +442,13 @@ function hardenWebContents(contents) {
   }
 
   contents.on('context-menu', (event, params) => {
-    buildContextMenu(contents, params).popup();
+    if (!mainWindow) return;
+    // contents.id lets the renderer work out which webview was clicked, so
+    // it can put the menu where the pointer actually is.
+    mainWindow.webContents.send('context-menu', {
+      wcId: contents.id,
+      params: pickMenuParams(params)
+    });
   });
 
   contents.setWindowOpenHandler(({ url }) => {
@@ -784,10 +755,6 @@ ipcMain.handle('downloads-clear', () => {
 // The one place to clear things. Every destructive item confirms first and
 // says plainly what it will and will not remove.
 
-function sendShortcut(name) {
-  if (mainWindow) mainWindow.webContents.send('shortcut', name);
-}
-
 async function clearData(kind) {
   const sess = session.fromPartition('persist:main');
 
@@ -833,20 +800,6 @@ async function clearData(kind) {
     flushHistory();
   }
 }
-
-ipcMain.handle('app-menu', () => {
-  Menu.buildFromTemplate([
-    { label: 'Settings', accelerator: 'Ctrl+,', click: () => sendShortcut('settings') },
-    { label: 'Inside My Browser', click: () => sendShortcut('guide') },
-    { type: 'separator' },
-    { label: 'History', accelerator: 'Ctrl+H', click: () => sendShortcut('history') },
-    { label: 'Downloads', accelerator: 'Ctrl+J', click: () => sendShortcut('downloads') },
-    { type: 'separator' },
-    { label: 'Sign out of all sites\u2026', click: () => clearData('signout') },
-    { label: 'Clear cache', click: () => clearData('cache') },
-    { label: 'Clear browsing history\u2026', click: () => clearData('history') }
-  ]).popup();
-});
 
 // ---------- Silent background auto-update ----------
 // Checks the GitHub releases of ChaosWolfLord/mybrowser on launch and every
