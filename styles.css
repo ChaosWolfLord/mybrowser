@@ -855,6 +855,21 @@ html, body {
 }
 .menu-item:hover:not(:disabled) .menu-accel { color: #A79C8F; }
 
+/* ---------- Video fullscreen ---------- */
+/* A <webview> asking for fullscreen only fills its own box, which for a
+   video means a "fullscreen" that is still the size of the browsing pane.
+   The page is lifted out of the layout and the chrome gets out of the way. */
+
+body.fullscreen .chrome,
+body.fullscreen .sidebar,
+body.fullscreen .bookmarks { display: none; }
+
+.browser-pane webview.fs {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+}
+
 .menu-sep {
   height: 1px;
   margin: 5px 8px;

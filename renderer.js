@@ -204,6 +204,8 @@ function attachWebviewEvents(tab) {
     backfillBookmarkIcon(currentUrlOf(tab), icon);
   });
   webview.addEventListener('dom-ready', () => applyTabZoom(tab));
+  webview.addEventListener('enter-html-full-screen', () => setPageFullscreen(tab, true));
+  webview.addEventListener('leave-html-full-screen', () => setPageFullscreen(tab, false));
   webview.addEventListener('found-in-page', (e) => {
     if (activeId !== id || !e.result) return;
     const matches = e.result.matches;
@@ -1389,6 +1391,35 @@ document.getElementById('sidebar-collapse').addEventListener('click', toggleSide
 document.getElementById('sidebar-toggle-btn').addEventListener('click', toggleSidebar);
 setSidebarCollapsed(readPref('sidebarCollapsed', false));
 
+// ---------- Fullscreen, printing, devtools ----------
+
+// Lifting the page out of the layout and hiding the chrome, plus taking the
+// OS window fullscreen so a video really does fill the screen.
+function setPageFullscreen(tab, on) {
+  if (!tab.webview) return;
+  document.body.classList.toggle('fullscreen', on);
+  tab.webview.classList.toggle('fs', on);
+  window.tabStore?.setWindowFullscreen?.(on);
+  if (on) closeMenu();
+}
+
+function printPage() {
+  const tab = activeTab();
+  if (!tab || !tab.webview) return;
+  try {
+    const printing = tab.webview.print();
+    if (printing && typeof printing.catch === 'function') printing.catch(() => {});
+  } catch (err) {
+    // No printer, or the page refused; nothing useful to do about it here.
+  }
+}
+
+function openTabDevTools() {
+  const tab = activeTab();
+  if (!tab || !tab.webview) return;
+  try { tab.webview.openDevTools(); } catch (err) {}
+}
+
 // ---------- Menus ----------
 // Both the toolbar menu and every right-click menu are drawn here, in the
 // browser's own styling. Electron's native menu is a grey Windows menu that
@@ -1611,7 +1642,9 @@ const SHORTCUTS = {
   'prev-tab': () => cycleTab(-1),
   'zoom-in': () => nudgeTabZoom(0.1),
   'zoom-out': () => nudgeTabZoom(-0.1),
-  'zoom-reset': () => nudgeTabZoom(0)
+  'zoom-reset': () => nudgeTabZoom(0),
+  print: printPage,
+  devtools: openTabDevTools
 };
 
 function runShortcut(name) {
@@ -1637,6 +1670,8 @@ window.addEventListener('keydown', (e) => {
   else if (key === 'j') name = 'downloads';
   else if (key === ',') name = 'settings';
   else if (key === 'd') name = 'bookmark';
+  else if (key === 'p') name = 'print';
+  else if (key === 'i' && e.shiftKey) name = 'devtools';
   else if (key === 'tab') name = e.shiftKey ? 'prev-tab' : 'next-tab';
   else if (key === '=' || key === '+') name = 'zoom-in';
   else if (key === '-') name = 'zoom-out';

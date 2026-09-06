@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('tabStore', {
     clear: () => ipcRenderer.invoke('history-clear')
   },
   clipboardWrite: (text) => ipcRenderer.invoke('clipboard-write', text),
+  setWindowFullscreen: (on) => ipcRenderer.invoke('window-fullscreen', on),
   // Where the user right-clicked, so the renderer can draw the menu there.
   onContextMenu: (callback) => {
     ipcRenderer.on('context-menu', (event, payload) => callback(payload));

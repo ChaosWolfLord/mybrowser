@@ -119,7 +119,10 @@ const DEFAULT_SETTINGS = {
   allowNotifications: true,
   allowClipboard: true,
   clearHistoryOnExit: false,
-  showBookmarksBar: true
+  showBookmarksBar: true,
+  // Schemes you have said yes to, so Roblox's Play button asks once rather
+  // than every time. Not a switch, so it never appears on the settings page.
+  allowedProtocols: []
 };
 
 let settings = Object.assign({}, DEFAULT_SETTINGS);
@@ -133,6 +136,13 @@ function loadSettings() {
     Object.keys(DEFAULT_SETTINGS).forEach((key) => {
       if (typeof raw[key] === 'boolean') settings[key] = raw[key];
     });
+    // The one non-boolean setting, so it needs its own check: a list of
+    // plain scheme names, nothing that could smuggle in a path or an argument.
+    if (Array.isArray(raw.allowedProtocols)) {
+      settings.allowedProtocols = raw.allowedProtocols
+        .filter((p) => typeof p === 'string' && /^[a-z][a-z0-9+.-]{0,31}$/.test(p))
+        .slice(0, 20);
+    }
   } catch (err) {
     // No file yet, or unreadable: defaults stand.
   }
@@ -355,6 +365,72 @@ ipcMain.handle('bookmarks-remove', (event, url) => {
   return bookmarks.slice();
 });
 
+// ---------- Links that belong to another program ----------
+// Roblox's Play button navigates to roblox-player://..., Epic uses
+// com.epicgames.launcher://, and so on. Nothing here handled those, so they
+// failed silently: the click did nothing at all and said nothing about why.
+
+// Everything the browser itself can display. Anything else is somebody
+// else's program.
+const WEB_SCHEMES = ['http', 'https', 'file', 'about', 'data', 'blob', 'chrome', 'devtools', 'javascript'];
+
+function schemeOf(url) {
+  const m = /^([a-z][a-z0-9+.-]*):/i.exec(url || '');
+  return m ? m[1].toLowerCase() : '';
+}
+
+function isExternalProtocol(url) {
+  const scheme = schemeOf(url);
+  return !!scheme && !WEB_SCHEMES.includes(scheme);
+}
+
+// One prompt at a time. A page in a loop would otherwise stack dialogs
+// until the browser was unusable.
+let askingAboutProtocol = false;
+
+async function openExternalLink(url) {
+  const scheme = schemeOf(url);
+  if (!scheme || typeof url !== 'string' || url.length > 2048) return;
+
+  if (!settings.allowedProtocols.includes(scheme)) {
+    if (askingAboutProtocol || !mainWindow) return;
+    askingAboutProtocol = true;
+    let answer;
+    try {
+      answer = await dialog.showMessageBox(mainWindow, {
+        type: 'question',
+        buttons: ['Open', 'Cancel'],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+        checkboxLabel: 'Always allow ' + scheme + ' links',
+        message: 'Let another program open this?',
+        detail: 'A page wants Windows to open:\n\n' +
+          (url.length > 160 ? url.slice(0, 160) + '\u2026' : url) +
+          '\n\nThis leaves the browser and hands the link to another ' +
+          'program. Continue only if you were expecting it \u2014 for ' +
+          'example, you just pressed Play on a game.'
+      });
+    } finally {
+      askingAboutProtocol = false;
+    }
+    if (answer.response !== 0) return;
+    if (answer.checkboxChecked) {
+      settings.allowedProtocols = settings.allowedProtocols.concat(scheme).slice(0, 20);
+      saveSettings();
+    }
+  }
+
+  shell.openExternal(url).catch((err) => {
+    console.error('Could not open ' + scheme + ' link:', err.message);
+  });
+}
+
+ipcMain.handle('window-fullscreen', (event, on) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) win.setFullScreen(!!on);
+});
+
 // ---------- Right-click menu ----------
 // The menu is drawn by the renderer in the browser's own styling. Electron
 // pops a native Windows menu, which is grey and square and looks like it
@@ -430,6 +506,8 @@ function hardenWebContents(contents) {
       else if (key === 'j') name = 'downloads';
       else if (key === ',') name = 'settings';
       else if (key === 'd') name = 'bookmark';
+      else if (key === 'p') name = 'print';
+      else if (key === 'i' && input.shift) name = 'devtools';
       else if (key === 'tab') name = input.shift ? 'prev-tab' : 'next-tab';
       else if (key === '=' || key === '+') name = 'zoom-in';
       else if (key === '-') name = 'zoom-out';
@@ -440,6 +518,13 @@ function hardenWebContents(contents) {
       mainWindow.webContents.send('shortcut', name);
     });
   }
+
+  // A page navigating straight to another program's scheme.
+  contents.on('will-navigate', (event, url) => {
+    if (!isExternalProtocol(url)) return;
+    event.preventDefault();
+    openExternalLink(url);
+  });
 
   contents.on('context-menu', (event, params) => {
     if (!mainWindow) return;
@@ -452,6 +537,10 @@ function hardenWebContents(contents) {
   });
 
   contents.setWindowOpenHandler(({ url }) => {
+    if (isExternalProtocol(url)) {
+      openExternalLink(url);
+      return { action: 'deny' };
+    }
     if (POPUP_ALLOWLIST.some((re) => re.test(url))) {
       return {
         action: 'allow',
