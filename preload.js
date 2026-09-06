@@ -26,6 +26,10 @@ contextBridge.exposeInMainWorld('tabStore', {
   setWindowFullscreen: (on) => ipcRenderer.invoke('window-fullscreen', on),
   newWindow: (isPrivate) => ipcRenderer.invoke('new-window', { private: !!isPrivate }),
   windowInfo: () => ipcRenderer.invoke('window-info'),
+  news: {
+    get: () => ipcRenderer.invoke('news-get'),
+    setTopics: (topics) => ipcRenderer.invoke('news-topics-set', topics)
+  },
   // Where the user right-clicked, so the renderer can draw the menu there.
   onContextMenu: (callback) => {
     ipcRenderer.on('context-menu', (event, payload) => callback(payload));

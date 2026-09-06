@@ -131,6 +131,21 @@ It costs almost nothing: three composited layers moving on `transform` only,
 the animation stops itself once everything settles, and it holds still
 entirely if you have asked your system to reduce motion.
 
+## The news feed
+
+Under the search box on every new tab: headlines pulled from Google News for
+the topics you pick. It starts on Roblox, Minecraft, LEGO and Technology --
+change them in **Settings -> New tab page -> Topics**, comma separated, up to
+six. The whole feed can be switched off there too.
+
+Each topic is fetched separately and the results are interleaved rather than
+stacked, so a busy topic can't crowd the quieter ones out of the top. It
+refreshes every 15 minutes in the background, so opening a tab never waits on
+Google.
+
+No account and no API key: Google News publishes a plain RSS feed per search
+term, and nothing about you goes with the request beyond the words you chose.
+
 ## Keyboard shortcuts
 
 | Keys | Does |

@@ -142,6 +142,27 @@ no way to style it.
   `dialog.showMessageBox`, which is right: a modal confirmation should look
   like the system asking.
 
+## Getting data into the new tab page
+
+That page is a `<webview>`, so it has no preload, and its CSP has no
+`connect-src`. It cannot fetch anything and nothing can hand it anything --
+both deliberate. The one route in is `executeJavaScript`, which bypasses page
+CSP; the webdriver mask already relied on this. Main fetches the headlines,
+the renderer injects them on `dom-ready` by calling `window.__setNews`.
+
+Do not "fix" this by giving the page a preload or loosening its CSP. Those
+were the two alternatives and both widen the surface of a page that renders
+text from the open internet.
+
+- `parseRss` is hand-rolled because the feed is flat and only four fields are
+  wanted. `decodeEntities` must decode `&amp;` **last**, or `&amp;lt;` turns
+  into `<`.
+- Items whose link is not `http`/`https` are dropped in main *and* again in
+  the page before rendering.
+- `newsTopics` and `allowedProtocols` are the two non-boolean settings, so
+  each has its own validation in `loadSettings`; `settings-set` still refuses
+  anything that is not a boolean.
+
 ## More than one window
 
 `mainWindow` now means *the focused window*, and is only for things that

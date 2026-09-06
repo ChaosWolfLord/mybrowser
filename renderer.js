@@ -206,7 +206,10 @@ function attachWebviewEvents(tab) {
     iconEl.classList.add('shown');
     backfillBookmarkIcon(currentUrlOf(tab), icon);
   });
-  webview.addEventListener('dom-ready', () => applyTabZoom(tab));
+  webview.addEventListener('dom-ready', () => {
+    applyTabZoom(tab);
+    sendNewsTo(webview);
+  });
   webview.addEventListener('enter-html-full-screen', () => setPageFullscreen(tab, true));
   webview.addEventListener('leave-html-full-screen', () => setPageFullscreen(tab, false));
   webview.addEventListener('found-in-page', (e) => {
@@ -734,6 +737,7 @@ const bookmarksBar = document.getElementById('bookmarks');
 const starBtn = document.getElementById('star-btn');
 let bookmarkList = [];
 let uiSettings = {};
+let newsTopics = [];
 
 // Only real web pages: not the new-tab page, not an internal page.
 function canBookmark(url) {
@@ -923,6 +927,17 @@ const SETTINGS_SECTIONS = [
     ]
   },
   {
+    title: 'New tab page',
+    items: [
+      {
+        key: 'showNews',
+        label: 'Show a news feed',
+        hint: 'Headlines from Google News, under the search box on every new tab.'
+      },
+      { type: 'topics' }
+    ]
+  },
+  {
     title: 'On exit',
     items: [
       {
@@ -941,6 +956,52 @@ function makeSwitch(on, onToggle) {
   el.setAttribute('aria-checked', on ? 'true' : 'false');
   el.addEventListener('click', () => onToggle(!el.classList.contains('on')));
   return el;
+}
+
+// The one setting that is not a switch.
+function topicsRow() {
+  const row = document.createElement('div');
+  row.className = 'set-row';
+
+  const main = document.createElement('div');
+  main.className = 'set-main';
+
+  const label = document.createElement('div');
+  label.className = 'set-label';
+  label.textContent = 'Topics';
+
+  const hint = document.createElement('div');
+  hint.className = 'set-hint';
+  hint.textContent = 'What the feed follows, separated by commas. Up to six.';
+
+  const input = document.createElement('input');
+  input.className = 'set-input';
+  input.type = 'text';
+  input.spellcheck = false;
+  input.placeholder = 'Roblox, Minecraft, LEGO';
+  input.value = newsTopics.join(', ');
+
+  const save = async () => {
+    const wanted = input.value.split(',').map((t) => t.trim()).filter(Boolean);
+    try {
+      newsTopics = await window.tabStore.news.setTopics(wanted);
+    } catch (err) {
+      // Keep whatever we had rather than blanking the field.
+    }
+    // Show what was actually kept, so a rejected or trimmed topic is visible.
+    input.value = newsTopics.join(', ');
+  };
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+  });
+  input.addEventListener('blur', save);
+
+  main.appendChild(label);
+  main.appendChild(hint);
+  main.appendChild(input);
+  row.appendChild(main);
+  return row;
 }
 
 function settingsRow(item, values) {
@@ -1002,6 +1063,12 @@ async function renderSettings() {
   uiSettings = state.values;
   applyBookmarksBar();
 
+  try {
+    newsTopics = (await window.tabStore.news.get()).topics || [];
+  } catch (err) {
+    newsTopics = [];
+  }
+
   settingsList.innerHTML = '';
   SETTINGS_SECTIONS.forEach((section) => {
     const head = document.createElement('div');
@@ -1009,7 +1076,9 @@ async function renderSettings() {
     head.textContent = section.title;
     settingsList.appendChild(head);
     section.items.forEach((item) => {
-      settingsList.appendChild(settingsRow(item, state.values));
+      settingsList.appendChild(
+        item.type === 'topics' ? topicsRow() : settingsRow(item, state.values)
+      );
     });
   });
 
@@ -1476,6 +1545,25 @@ function toggleSidebar() {
 document.getElementById('sidebar-collapse').addEventListener('click', toggleSidebar);
 document.getElementById('sidebar-toggle-btn').addEventListener('click', toggleSidebar);
 setSidebarCollapsed(readPref('sidebarCollapsed', false));
+
+// ---------- Feeding the new tab page ----------
+
+// That page has no preload and its policy blocks network calls, so it
+// cannot fetch anything itself. executeJavaScript is the one way across --
+// the same route the webdriver mask already uses.
+async function sendNewsTo(webview) {
+  const api = window.tabStore && window.tabStore.news;
+  if (!api) return;
+  try {
+    if (!isNewTabUrl(webview.getURL())) return;
+    const payload = await api.get();
+    await webview.executeJavaScript(
+      'window.__setNews && window.__setNews(' + JSON.stringify(payload) + ')'
+    );
+  } catch (err) {
+    // Offline, or the tab went away mid-fetch. The page just shows no feed.
+  }
+}
 
 // ---------- Fullscreen, printing, devtools ----------
 

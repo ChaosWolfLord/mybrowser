@@ -574,6 +574,22 @@ body.private .chrome {
 
 .set-actions { display: flex; gap: 8px; padding: 6px 10px 0 10px; }
 
+.set-input {
+  width: 100%;
+  max-width: 340px;
+  height: 30px;
+  margin-top: 9px;
+  padding: 0 11px;
+  background: #171412;
+  border: 1px solid rgba(237,228,216,0.1);
+  border-radius: 7px;
+  color: #EDE4D8;
+  font-size: 12.5px;
+  font-family: inherit;
+  outline: none;
+}
+.set-input:focus { border-color: rgba(201,138,62,0.65); }
+
 /* ---------- Internal pages (settings) ---------- */
 /* Sits in the same stacking slot as a webview, because it is what a tab is
    showing rather than something floating over one. */

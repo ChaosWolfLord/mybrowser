@@ -1,4 +1,4 @@
-const { app, BrowserWindow, session, ipcMain, clipboard, shell, dialog } = require('electron');
+const { app, BrowserWindow, session, ipcMain, clipboard, shell, dialog, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
@@ -142,9 +142,12 @@ const DEFAULT_SETTINGS = {
   allowClipboard: true,
   clearHistoryOnExit: false,
   showBookmarksBar: true,
+  showNews: true,
   // Schemes you have said yes to, so Roblox's Play button asks once rather
   // than every time. Not a switch, so it never appears on the settings page.
-  allowedProtocols: []
+  allowedProtocols: [],
+  // What the new tab page reads about. Also not a switch.
+  newsTopics: ['Roblox', 'Minecraft', 'LEGO', 'Technology']
 };
 
 let settings = Object.assign({}, DEFAULT_SETTINGS);
@@ -160,6 +163,8 @@ function loadSettings() {
     });
     // The one non-boolean setting, so it needs its own check: a list of
     // plain scheme names, nothing that could smuggle in a path or an argument.
+    const topics = cleanTopics(raw.newsTopics);
+    if (topics) settings.newsTopics = topics;
     if (Array.isArray(raw.allowedProtocols)) {
       settings.allowedProtocols = raw.allowedProtocols
         .filter((p) => typeof p === 'string' && /^[a-z][a-z0-9+.-]{0,31}$/.test(p))
@@ -388,6 +393,147 @@ ipcMain.handle('bookmarks-remove', (event, url) => {
   bookmarks = bookmarks.filter((b) => b.url !== url);
   saveBookmarks();
   return bookmarks.slice();
+});
+
+// ---------- News ----------
+// Google News publishes an RSS feed per search term, which is all this
+// needs: no API key, no account, and nothing about you goes with the
+// request beyond the words you chose.
+
+const NEWS_MAX_TOPICS = 6;
+const NEWS_PER_TOPIC = 6;
+const NEWS_TOTAL = 24;
+const NEWS_MAX_AGE = 10 * 60 * 1000;
+
+let newsItems = [];
+let newsFetchedAt = 0;
+let newsFetching = false;
+
+function cleanTopics(list) {
+  if (!Array.isArray(list)) return null;
+  const out = [];
+  list.forEach((raw) => {
+    if (typeof raw !== 'string' || out.length >= NEWS_MAX_TOPICS) return;
+    const topic = raw.trim().replace(/\s+/g, ' ');
+    if (!topic || topic.length > 40) return;
+    if (out.some((existing) => existing.toLowerCase() === topic.toLowerCase())) return;
+    out.push(topic);
+  });
+  return out;
+}
+
+function decodeEntities(text) {
+  return String(text)
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&');   // last, or &amp;lt; would decode twice
+}
+
+// Small enough to hand-roll: the feed is a flat list of <item> blocks and
+// only four fields are wanted from each.
+function parseRss(xml, limit) {
+  const items = [];
+  const blocks = String(xml).split('<item>').slice(1);
+
+  for (const block of blocks) {
+    if (items.length >= limit) break;
+
+    const pick = (tag) => {
+      const m = new RegExp('<' + tag + '[^>]*>([\\s\\S]*?)</' + tag + '>').exec(block);
+      if (!m) return '';
+      return decodeEntities(m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/, '$1')).trim();
+    };
+
+    const link = pick('link');
+    if (!/^https?:\/\//i.test(link)) continue;   // never surface anything else
+
+    const source = pick('source');
+    let title = pick('title');
+    // Google appends " - Publisher" to every headline, and the publisher is
+    // already its own field, so the tail is just noise.
+    if (source && title.endsWith(' - ' + source)) {
+      title = title.slice(0, -(source.length + 3));
+    }
+    if (!title) continue;
+
+    items.push({ title, link, source, published: Date.parse(pick('pubDate')) || 0 });
+  }
+  return items;
+}
+
+async function fetchTopic(topic) {
+  const url = 'https://news.google.com/rss/search?q=' + encodeURIComponent(topic) +
+    '&hl=en-US&gl=US&ceid=US:en';
+  const response = await net.fetch(url);
+  if (!response.ok) throw new Error('HTTP ' + response.status);
+  const xml = await response.text();
+  return parseRss(xml, NEWS_PER_TOPIC).map((item) => {
+    item.topic = topic;
+    return item;
+  });
+}
+
+async function refreshNews(force) {
+  if (newsFetching) return;
+  if (!settings.showNews || settings.newsTopics.length === 0) {
+    newsItems = [];
+    return;
+  }
+  if (!force && Date.now() - newsFetchedAt < NEWS_MAX_AGE) return;
+
+  newsFetching = true;
+  try {
+    const topics = settings.newsTopics.slice(0, NEWS_MAX_TOPICS);
+    // One topic failing must not take the rest of the feed down with it.
+    const lists = await Promise.all(topics.map((t) => fetchTopic(t).catch(() => [])));
+
+    // Interleaved rather than concatenated, so a busy topic cannot crowd
+    // the quieter ones out of the top of the feed.
+    const merged = [];
+    const seen = new Set();
+    for (let round = 0; round < NEWS_PER_TOPIC; round++) {
+      lists.forEach((list) => {
+        const item = list[round];
+        if (!item || seen.has(item.link)) return;
+        seen.add(item.link);
+        merged.push(item);
+      });
+    }
+    newsItems = merged.slice(0, NEWS_TOTAL);
+    newsFetchedAt = Date.now();
+  } catch (err) {
+    console.error('News fetch failed:', err.message);
+  } finally {
+    newsFetching = false;
+  }
+}
+
+ipcMain.handle('news-get', async () => {
+  // Nothing cached yet means waiting, so the first new tab is not empty.
+  // Otherwise serve what we have and refresh behind it.
+  if (!newsItems.length) await refreshNews(true);
+  else refreshNews(false);
+
+  return {
+    items: settings.showNews ? newsItems : [],
+    topics: settings.newsTopics.slice(),
+    enabled: !!settings.showNews,
+    fetchedAt: newsFetchedAt
+  };
+});
+
+ipcMain.handle('news-topics-set', (event, topics) => {
+  const cleaned = cleanTopics(topics);
+  if (!cleaned) return settings.newsTopics.slice();
+  settings.newsTopics = cleaned;
+  saveSettings();
+  newsItems = [];
+  newsFetchedAt = 0;
+  refreshNews(true);
+  return settings.newsTopics.slice();
 });
 
 // ---------- Links that belong to another program ----------
@@ -1026,6 +1172,9 @@ app.whenReady().then(() => {
   loadBookmarks();
   loadHistory();
   setInterval(flushHistory, 15 * 1000);
+  // Kept warm in the background so opening a tab does not wait on Google.
+  setTimeout(() => refreshNews(true), 4000);
+  setInterval(() => refreshNews(true), 15 * 60 * 1000);
   mainWindow = createWindow();
   setupAutoUpdate();
 
