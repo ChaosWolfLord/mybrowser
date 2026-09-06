@@ -33,6 +33,9 @@ let activeId = null;
 let nextId = 1;
 const closedTabs = [];   // URLs of recently closed tabs, for Ctrl+Shift+T
 let findActive = false;
+// Filled in at boot. Only the first ordinary window owns tabs.json, and a
+// private window records nothing anywhere.
+let windowInfo = { isPrimary: true, isPrivate: false };
 
 // ---------- Preferences ----------
 
@@ -237,7 +240,7 @@ function createTab(url, options) {
   }
 
   const tabEl = document.createElement('div');
-  tabEl.className = 'tab';
+  tabEl.className = 'tab' + (opts.pinned ? ' pinned' : '');
   const titleEl = document.createElement('span');
   titleEl.className = 'title';
   titleEl.textContent = spec ? spec.title : (opts.defer ? labelFor(target) : 'New tab');
@@ -264,6 +267,7 @@ function createTab(url, options) {
     webview,
     panel,
     internal: opts.internal || null,
+    pinned: !!opts.pinned,
     tabEl,
     titleEl,
     iconEl,
@@ -279,6 +283,10 @@ function createTab(url, options) {
   tabEl.addEventListener('auxclick', (e) => {
     if (e.button === 1) { e.preventDefault(); closeTab(id); }
   });
+  tabEl.addEventListener('mousedown', (e) => {
+    if (e.button !== 0 || e.target.closest('.closebtn')) return;
+    startTabDrag(tab, e);
+  });
 
   if (webview) attachWebviewEvents(tab);
 
@@ -287,6 +295,80 @@ function createTab(url, options) {
     persistTabs();
   }
   return tab;
+}
+
+// ---------- Pinning, reordering, duplicating ----------
+
+// Pinned tabs are held at the front. sort is stable, so everything keeps
+// its relative order within its own group.
+function reflowTabs() {
+  tabs.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
+  tabs.forEach((t) => tabstrip.appendChild(t.tabEl));
+  persistTabs();
+}
+
+function togglePin(tab) {
+  tab.pinned = !tab.pinned;
+  tab.tabEl.classList.toggle('pinned', tab.pinned);
+  reflowTabs();
+}
+
+function duplicateTab(tab) {
+  createTab(currentUrlOf(tab));
+}
+
+function closeOtherTabs(keepId) {
+  // Pinned tabs survive this: they are pinned precisely so they stay.
+  tabs.slice().forEach((t) => {
+    if (t.id !== keepId && !t.pinned) closeTab(t.id);
+  });
+}
+
+// Dragging a tab. The shield goes up because the pointer can easily leave
+// the strip and cross a page, which would otherwise swallow the events.
+function startTabDrag(tab, downEvent) {
+  const startX = downEvent.clientX;
+  let dragging = false;
+
+  const onMove = (e) => {
+    if (!dragging) {
+      if (Math.abs(e.clientX - startX) < 5) return;
+      dragging = true;
+      tab.tabEl.classList.add('dragging');
+      dragShield.classList.add('active', 'plain');
+    }
+
+    // Only ever reorder within its own group, so a drag can't unpin a tab.
+    const group = tabs.filter((t) => !!t.pinned === !!tab.pinned);
+    const others = group.filter((t) => t !== tab);
+
+    let index = 0;
+    others.forEach((other) => {
+      const r = other.tabEl.getBoundingClientRect();
+      if (e.clientX > r.left + r.width / 2) index += 1;
+    });
+
+    const reordered = others.slice();
+    reordered.splice(index, 0, tab);
+    if (reordered.every((t, i) => t === group[i])) return;   // nothing moved
+
+    const pinnedGroup = tab.pinned ? reordered : tabs.filter((t) => t.pinned);
+    const looseGroup = tab.pinned ? tabs.filter((t) => !t.pinned) : reordered;
+    tabs = pinnedGroup.concat(looseGroup);
+    tabs.forEach((t) => tabstrip.appendChild(t.tabEl));
+  };
+
+  const onUp = () => {
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
+    if (!dragging) return;
+    tab.tabEl.classList.remove('dragging');
+    dragShield.classList.remove('active', 'plain');
+    persistTabs();
+  };
+
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
 }
 
 // ---------- Session persistence: remember tabs across restarts ----------
@@ -305,11 +387,15 @@ function persistTabs() {
   // copy happens to live in, which is wrong the moment the app is packaged
   // (newtab.html then lives inside app.asar). Store the bare relative name
   // instead so it resolves correctly either way.
-  const urls = tabs.map((t) => {
+  // A second window must not fight the first over the same file, and a
+  // private window is not supposed to leave anything behind.
+  if (!windowInfo.isPrimary || windowInfo.isPrivate) return;
+
+  const entries = tabs.map((t) => {
     const url = currentUrlOf(t);
-    return isNewTabUrl(url) ? 'newtab.html' : url;
+    return { url: isNewTabUrl(url) ? 'newtab.html' : url, pinned: !!t.pinned };
   });
-  window.tabStore?.save(urls);
+  window.tabStore?.save(entries);
 }
 
 function setActiveTab(id) {
@@ -432,7 +518,7 @@ window.tabStore?.onOpenUrl?.((url) => createTab(url));
 const historyApi = window.tabStore && window.tabStore.history;
 
 function recordVisit(url, title) {
-  if (!historyApi || !url) return;
+  if (!historyApi || !url || windowInfo.isPrivate) return;
   historyApi.add(url, title || '').catch(() => {});
 }
 
@@ -1608,8 +1694,29 @@ window.tabStore?.onContextMenu?.((payload) => {
   const wv = webviewById(payload.wcId);
 
   if (!wv) {
-    // The shell's own pages -- settings, the guide, the chrome. There is no
-    // webview to act on, so offer only what makes sense here.
+    // The click was on the shell rather than a page. Work out what it landed
+    // on: this is also how right-clicking a tab is handled, rather than a DOM
+    // listener, which would fire alongside this one and open two menus.
+    const under = document.elementFromPoint(p.x, p.y);
+    const tabEl = under && under.closest ? under.closest('.tab') : null;
+    const tab = tabEl ? tabs.find((t) => t.tabEl === tabEl) : null;
+
+    if (tab) {
+      showMenu([
+        { label: tab.pinned ? 'Unpin tab' : 'Pin tab', click: () => togglePin(tab) },
+        { label: 'Duplicate tab', click: () => duplicateTab(tab) },
+        { type: 'separator' },
+        { label: 'Close tab', accel: 'Ctrl+W', click: () => closeTab(tab.id) },
+        {
+          label: 'Close other tabs',
+          enabled: tabs.filter((t) => !t.pinned || t.id === tab.id).length > 1,
+          click: () => closeOtherTabs(tab.id)
+        }
+      ], p.x, p.y);
+      return;
+    }
+
+    // Settings, the guide, or the chrome itself: no webview to act on.
     const selected = String(window.getSelection() || '').trim();
     if (!selected) return;
     showMenu([{ label: 'Copy', accel: 'Ctrl+C', click: () => copyText(selected) }], p.x, p.y);
@@ -1644,6 +1751,8 @@ const SHORTCUTS = {
   'zoom-out': () => nudgeTabZoom(-0.1),
   'zoom-reset': () => nudgeTabZoom(0),
   print: printPage,
+  'new-window': () => window.tabStore?.newWindow?.(false),
+  'new-private-window': () => window.tabStore?.newWindow?.(true),
   devtools: openTabDevTools
 };
 
@@ -1671,6 +1780,7 @@ window.addEventListener('keydown', (e) => {
   else if (key === ',') name = 'settings';
   else if (key === 'd') name = 'bookmark';
   else if (key === 'p') name = 'print';
+  else if (key === 'n') name = e.shiftKey ? 'new-private-window' : 'new-window';
   else if (key === 'i' && e.shiftKey) name = 'devtools';
   else if (key === 'tab') name = e.shiftKey ? 'prev-tab' : 'next-tab';
   else if (key === '=' || key === '+') name = 'zoom-in';
@@ -1685,6 +1795,13 @@ window.addEventListener('keydown', (e) => {
 // ---------- Boot: restore your previous tabs, if any ----------
 
 (async function boot() {
+  try {
+    windowInfo = await window.tabStore.windowInfo();
+  } catch (err) {
+    windowInfo = { isPrimary: true, isPrivate: false };
+  }
+  document.body.classList.toggle('private', !!windowInfo.isPrivate);
+
   let saved = null;
   try {
     saved = await window.tabStore.load();
@@ -1692,18 +1809,28 @@ window.addEventListener('keydown', (e) => {
     saved = null;
   }
 
+  // A second window, or a private one, starts empty rather than cloning
+  // whatever the first window had open.
+  if (!windowInfo.isPrimary || windowInfo.isPrivate) saved = null;
+
   if (Array.isArray(saved) && saved.length > 0) {
     // Only the tab you were last looking at loads now; the rest fill in
-    // when you click them.
-    saved.forEach((url, i) => {
+    // when you click them. Entries used to be plain strings, so both shapes
+    // are accepted.
+    saved.forEach((entry, i) => {
+      const url = typeof entry === 'string' ? entry : (entry && entry.url);
+      const pinned = typeof entry === 'object' && entry ? !!entry.pinned : false;
+      if (!url) return;
+
       const kind = internalKindOf(url);
       if (kind) {
         createTab(null, { internal: kind, silent: true });
         return;
       }
       const clean = isNewTabUrl(url) ? 'newtab.html' : url;
-      createTab(clean, { defer: i !== 0, silent: true });
+      createTab(clean, { defer: i !== 0, silent: true, pinned });
     });
+    reflowTabs();
     setActiveTab(tabs[0].id);
     persistTabs();
   } else {

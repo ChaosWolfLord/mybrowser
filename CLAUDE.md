@@ -142,6 +142,28 @@ no way to style it.
   `dialog.showMessageBox`, which is right: a modal confirmation should look
   like the system asking.
 
+## More than one window
+
+`mainWindow` now means *the focused window*, and is only for things that
+need any window at all: dialogs and the protocol prompt. Anything caused by
+a particular page goes to that page's own window via `ownerWindow(contents)`;
+anything global (downloads, session-cleared) goes through `sendToAll`.
+
+- **Only the first ordinary window owns `tabs.json`.** Two windows writing
+  it would each clobber the other, so `persistTabs` returns early unless
+  `windowInfo.isPrimary`, and non-primary windows start empty rather than
+  cloning what the first had open.
+- **A private window is a partition without `persist:`**, so the session is
+  in memory and gone when the window closes. `will-attach-webview` picks the
+  partition from `windowPartitions` keyed on the *embedder*, which is what
+  keeps a private window's webviews out of the signed-in session. It records
+  no history either.
+- **Every session gets the network policy**, not just the first --
+  `applySettings` iterates `sessions`. A private window that skipped tracker
+  blocking would be a strange kind of private.
+- `tabs.json` entries are `{url, pinned}` objects now; plain strings are
+  still accepted, since that is what existing files contain.
+
 ## Internal pages
 
 `INTERNAL_PAGES` in `renderer.js` registers pages that the shell draws

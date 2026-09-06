@@ -110,6 +110,7 @@ html, body {
   scrollbar-width: none;
 }
 .tabstrip::-webkit-scrollbar { display: none; }
+.tabstrip { user-select: none; }
 
 .tab {
   -webkit-app-region: no-drag;
@@ -130,6 +131,41 @@ html, body {
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 .tab:hover { background: rgba(237,228,216,0.075); color: #CFC5B9; }
+
+/* A pinned tab keeps its place and its icon and gives up everything else,
+   including the close button -- the point is that it cannot go by accident. */
+.tab.pinned {
+  min-width: 0;
+  width: 40px;
+  padding: 0;
+  justify-content: center;
+  gap: 0;
+}
+.tab.pinned .title,
+.tab.pinned .closebtn { display: none; }
+.tab.dragging { opacity: 0.65; }
+
+.privatebadge {
+  -webkit-app-region: no-drag;
+  display: none;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 6px;
+  background: rgba(139,126,200,0.22);
+  border: 1px solid rgba(139,126,200,0.45);
+  color: #B9AEEC;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+body.private .privatebadge { display: inline-flex; }
+body.private .chrome {
+  background:
+    radial-gradient(100% 180% at 18% -30%, rgba(139,126,200,0.18) 0%, rgba(139,126,200,0) 62%),
+    linear-gradient(180deg, #2B2733 0%, #1D1A22 100%);
+}
 .tab.active {
   background: linear-gradient(180deg, #3E3730 0%, #322B26 100%);
   border-color: rgba(237,228,216,0.13);

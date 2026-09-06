@@ -21,8 +21,19 @@ const historyFile = path.join(app.getPath('userData'), 'history.json');
 const settingsFile = path.join(app.getPath('userData'), 'settings.json');
 const bookmarksFile = path.join(app.getPath('userData'), 'bookmarks.json');
 
+// mainWindow is whichever window is focused, and is only used for things
+// that need *a* window: dialogs, and the protocol prompt. Anything caused by
+// a particular page goes to that page's own window instead.
 let mainWindow = null;
 let mainSession = null;
+
+const windows = new Set();
+const sessions = new Set();
+// embedder webContents id -> the partition its webviews must use. A private
+// window gets its own, so closing it forgets everything in it.
+const windowPartitions = new Map();
+let primaryContentsId = null;   // the one window that owns tabs.json
+let privateSeq = 0;
 let updateReadyToInstall = false;
 
 // ---------- Security policy ----------
@@ -55,6 +66,17 @@ const BLOCKED_HOSTS = [
 // This runs for every single request the browser makes -- a busy page is
 // hundreds of them -- so it has to stay cheap. `new URL()` was doing a full
 // parse per request just to read the host; a regex is enough.
+function ownerWindow(contents) {
+  // For a <webview> this walks up to the window that embeds it.
+  return BrowserWindow.fromWebContents(contents) || mainWindow;
+}
+
+function sendToAll(channel, payload) {
+  windows.forEach((win) => {
+    if (!win.isDestroyed()) win.webContents.send(channel, payload);
+  });
+}
+
 function hostOf(url) {
   // The (?:...@)? skips any user:pass@ before the host. Without it a
   // tracker evades the blocklist just by embedding userinfo in the URL.
@@ -254,9 +276,12 @@ function syncHeaderHandler(sess) {
 }
 
 function applySettings() {
-  if (!mainSession) return;
-  syncRequestHandler(mainSession);
-  syncHeaderHandler(mainSession);
+  // Every window's session, not just the first: a private window has its own
+  // and must be protected the same way.
+  sessions.forEach((sess) => {
+    syncRequestHandler(sess);
+    syncHeaderHandler(sess);
+  });
   require('electron').webContents.getAllWebContents().forEach(applyWebRTCPolicy);
 }
 
@@ -426,6 +451,21 @@ async function openExternalLink(url) {
   });
 }
 
+ipcMain.handle('new-window', (event, opts) => {
+  createWindow({ private: !!(opts && opts.private) });
+});
+
+// The renderer needs to know which window it is: only the first ordinary
+// window owns tabs.json, and a private one records nothing.
+ipcMain.handle('window-info', (event) => {
+  const id = event.sender.id;
+  const partition = windowPartitions.get(id) || 'persist:main';
+  return {
+    isPrimary: id === primaryContentsId,
+    isPrivate: partition !== 'persist:main'
+  };
+});
+
 ipcMain.handle('window-fullscreen', (event, on) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (win) win.setFullScreen(!!on);
@@ -478,7 +518,7 @@ function hardenWebContents(contents) {
     webPreferences.webSecurity = true;
     webPreferences.allowRunningInsecureContent = false;
     // Keep every panel and tab on the one session we control.
-    params.partition = 'persist:main';
+    params.partition = windowPartitions.get(contents.id) || 'persist:main';
   });
 
   // Keyboard events inside a <webview> never reach the shell page, so
@@ -486,13 +526,14 @@ function hardenWebContents(contents) {
   // page. Matched keys are swallowed here and replayed to the renderer.
   if (contents.getType() === 'webview') {
     contents.on('before-input-event', (event, input) => {
-      if (input.type !== 'keyDown' || !mainWindow) return;
+      const owner = ownerWindow(contents);
+      if (input.type !== 'keyDown' || !owner) return;
       const mod = input.control || input.meta;
       const key = (input.key || '').toLowerCase();
 
       if (key === 'escape') {
         // Forwarded but not swallowed -- pages use Escape too.
-        mainWindow.webContents.send('shortcut', 'escape');
+        owner.webContents.send('shortcut', 'escape');
         return;
       }
       if (!mod) return;
@@ -507,6 +548,7 @@ function hardenWebContents(contents) {
       else if (key === ',') name = 'settings';
       else if (key === 'd') name = 'bookmark';
       else if (key === 'p') name = 'print';
+      else if (key === 'n') name = input.shift ? 'new-private-window' : 'new-window';
       else if (key === 'i' && input.shift) name = 'devtools';
       else if (key === 'tab') name = input.shift ? 'prev-tab' : 'next-tab';
       else if (key === '=' || key === '+') name = 'zoom-in';
@@ -515,7 +557,7 @@ function hardenWebContents(contents) {
       if (!name) return;
 
       event.preventDefault();
-      mainWindow.webContents.send('shortcut', name);
+      owner.webContents.send('shortcut', name);
     });
   }
 
@@ -527,10 +569,11 @@ function hardenWebContents(contents) {
   });
 
   contents.on('context-menu', (event, params) => {
-    if (!mainWindow) return;
+    const owner = ownerWindow(contents);
+    if (!owner) return;
     // contents.id lets the renderer work out which webview was clicked, so
     // it can put the menu where the pointer actually is.
-    mainWindow.webContents.send('context-menu', {
+    owner.webContents.send('context-menu', {
       wcId: contents.id,
       params: pickMenuParams(params)
     });
@@ -552,14 +595,20 @@ function hardenWebContents(contents) {
     // Everything else becomes a tab. The old renderer listened for the
     // webview 'new-window' event to do this, which Electron removed in
     // v22 -- so until now, target=_blank links quietly did nothing at all.
-    if (/^https?:\/\//i.test(url) && mainWindow) {
-      mainWindow.webContents.send('open-url', url);
+    const owner = ownerWindow(contents);
+    if (/^https?:\/\//i.test(url) && owner) {
+      owner.webContents.send('open-url', url);
     }
     return { action: 'deny' };
   });
 }
 
-function createWindow() {
+function createWindow(options) {
+  const opts = options || {};
+  // A private window gets a partition with no `persist:` prefix, so the
+  // whole session lives in memory and is gone when the window closes.
+  const partition = opts.private ? 'private-' + (++privateSeq) : 'persist:main';
+
   const win = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -580,16 +629,30 @@ function createWindow() {
     }
   });
 
+  windows.add(win);
+  windowPartitions.set(win.webContents.id, partition);
+  if (primaryContentsId === null && !opts.private) primaryContentsId = win.webContents.id;
+
+  win.on('focus', () => { mainWindow = win; });
+  win.on('closed', () => {
+    windows.delete(win);
+    windowPartitions.delete(win.webContents.id);
+    if (mainWindow === win) mainWindow = windows.values().next().value || null;
+  });
+
   win.once('ready-to-show', () => win.show());
   win.loadFile('index.html');
 
-  // Every webview uses partition="persist:main", which maps to this same
-  // session. Signing into Google once keeps you signed in everywhere in the
-  // app, across restarts, just like a normal browser profile.
-  mainSession = session.fromPartition('persist:main');
-  mainSession.setUserAgent(CHROME_UA);
-  applyNetworkPolicy(mainSession);
-  mainSession.on('will-download', handleDownload);
+  // Ordinary windows all share persist:main, which is why one Google
+  // sign-in covers every panel and every tab, across restarts.
+  const sess = session.fromPartition(partition);
+  if (!sessions.has(sess)) {
+    sessions.add(sess);
+    sess.setUserAgent(CHROME_UA);
+    applyNetworkPolicy(sess);
+    sess.on('will-download', handleDownload);
+  }
+  if (!opts.private) mainSession = sess;
 
   // The shell window itself must never navigate away from index.html; if
   // something drives it elsewhere, that is the entire UI gone.
@@ -762,9 +825,7 @@ function publicDownload(d) {
 }
 
 function broadcastDownloads() {
-  if (mainWindow) {
-    mainWindow.webContents.send('downloads-changed', downloads.map(publicDownload));
-  }
+  sendToAll('downloads-changed', downloads.map(publicDownload));
 }
 
 function handleDownload(event, item) {
@@ -882,7 +943,7 @@ async function clearData(kind) {
   if (kind === 'signout') {
     await sess.clearStorageData();
     await sess.clearCache();
-    if (mainWindow) mainWindow.webContents.send('session-cleared');
+    sendToAll('session-cleared');
   } else {
     history = [];
     historyDirty = true;
