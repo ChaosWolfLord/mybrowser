@@ -775,14 +775,20 @@ function createWindow(options) {
     }
   });
 
+  // Read once and kept. By the time 'closed' fires the window is gone, and
+  // touching win.webContents then throws "Object has been destroyed" --
+  // inside an event handler, where it surfaces as an uncaught exception
+  // dialog just as you close the browser.
+  const contentsId = win.webContents.id;
+
   windows.add(win);
-  windowPartitions.set(win.webContents.id, partition);
-  if (primaryContentsId === null && !opts.private) primaryContentsId = win.webContents.id;
+  windowPartitions.set(contentsId, partition);
+  if (primaryContentsId === null && !opts.private) primaryContentsId = contentsId;
 
   win.on('focus', () => { mainWindow = win; });
   win.on('closed', () => {
     windows.delete(win);
-    windowPartitions.delete(win.webContents.id);
+    windowPartitions.delete(contentsId);
     if (mainWindow === win) mainWindow = windows.values().next().value || null;
   });
 
