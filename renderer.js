@@ -913,6 +913,11 @@ const SETTINGS_SECTIONS = [
       {
         key: 'allowClipboard',
         label: 'Allow reading the clipboard'
+      },
+      {
+        key: 'allowSecurityKeys',
+        label: 'Allow passkeys and security keys',
+        hint: 'Off, because a page can raise the Windows security-key box on its own, before you have even looked at it, and nothing here can dismiss it for you. Sites fall back to a password. Turn it on only if you actually sign in with a passkey; pages you already have open keep the old setting until you reload them.'
       }
     ]
   },
@@ -1532,10 +1537,16 @@ sbTabs.forEach((el) => {
 });
 
 function setSidebarCollapsed(collapsed) {
+  const wasCollapsed = sidebar.classList.contains('collapsed');
   sidebar.classList.toggle('collapsed', collapsed);
   writePref('sidebarCollapsed', collapsed);
-  // Width changed, so anything being fitted to it needs recomputing.
-  if (!collapsed) refitPanels();
+  if (!collapsed) {
+    // Opening it is the moment the panel is worth loading, since boot no
+    // longer loads one behind a closed sidebar.
+    if (wasCollapsed) ensurePanelLoaded(currentApp);
+    // Width changed, so anything being fitted to it needs recomputing.
+    refitPanels();
+  }
 }
 
 function toggleSidebar() {
@@ -1935,7 +1946,12 @@ window.addEventListener('keydown', (e) => {
   await refreshBookmarks();
 
   // The sidebar's first panel waits for the shell to go idle, so it never
-  // competes with the page you actually opened the browser to see.
-  const whenIdle = window.requestIdleCallback || ((fn) => setTimeout(fn, 250));
-  whenIdle(() => ensurePanelLoaded(currentApp));
+  // competes with the page you actually opened the browser to see -- and it
+  // is skipped entirely while the sidebar is collapsed. Loading Gmail behind
+  // a closed sidebar bought nothing and cost a real page load, which is also
+  // how a Google sign-in page ended up running unattended at every launch.
+  if (!sidebar.classList.contains('collapsed')) {
+    const whenIdle = window.requestIdleCallback || ((fn) => setTimeout(fn, 250));
+    whenIdle(() => ensurePanelLoaded(currentApp));
+  }
 })();

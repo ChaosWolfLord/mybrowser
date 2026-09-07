@@ -187,6 +187,17 @@ location gets refused instantly — you're not even interrupted with a popup.
 The only things allowed are notifications and clipboard, and both have
 switches.
 
+**Passkey prompts are refused.** A passkey (or "security key") is a way of
+signing in without a password, and it's a genuinely good idea — but the box
+that asks for one is drawn by *Windows*, not by the browser, so once it's up
+the browser can't take it back down for you. A page can ask the instant it
+loads, without you clicking anything, which is exactly what was happening:
+the sidebar quietly loaded Gmail at startup, Gmail bounced to a Google
+sign-in page, and that page asked for a security key before you'd even
+looked at the sidebar. So the browser now says no on your behalf, and sites
+fall back to asking for a password. There's a switch if you ever do want to
+use a passkey.
+
 **WebRTC leak protection.** There's a video-call feature in every browser
 that pages can abuse to learn your computer's address on the local network
 — *even through a VPN*. It's confined so they can't.

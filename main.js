@@ -111,9 +111,42 @@ function shouldUpgrade(details) {
   return host !== 'localhost' && host !== '127.0.0.1' && !host.endsWith('.localhost');
 }
 
+// Whether pages in this session may raise the native passkey / security-key
+// dialog. There is no permission hook for WebAuthn, so the only place to
+// intervene is inside the page, ahead of its own scripts: a preload the
+// session owns, which the guest cannot opt out of the way it could a
+// preload set through webPreferences.
+const WEBAUTHN_BLOCK_ID = 'no-webauthn';
+const webauthnBlockPath = path.join(__dirname, 'no-webauthn.js');
+
+function syncWebAuthnPolicy(sess) {
+  const shouldBlock = !settings.allowSecurityKeys;
+  let registered = false;
+  try {
+    registered = sess.getPreloadScripts().some((s) => s.id === WEBAUTHN_BLOCK_ID);
+  } catch (err) {
+    return;   // an Electron without the preload-script API: nothing to do
+  }
+
+  try {
+    if (shouldBlock && !registered) {
+      sess.registerPreloadScript({
+        type: 'frame',
+        id: WEBAUTHN_BLOCK_ID,
+        filePath: webauthnBlockPath
+      });
+    } else if (!shouldBlock && registered) {
+      sess.unregisterPreloadScript(WEBAUTHN_BLOCK_ID);
+    }
+  } catch (err) {
+    console.error('Could not apply the security-key policy:', err.message);
+  }
+}
+
 function applyNetworkPolicy(sess) {
   syncRequestHandler(sess);
   syncHeaderHandler(sess);
+  syncWebAuthnPolicy(sess);
 
   sess.setPermissionRequestHandler((webContents, permission, callback) => {
     callback(permissionAllowed(permission));
@@ -140,6 +173,11 @@ const DEFAULT_SETTINGS = {
   blockWebRTCLeak: true,
   allowNotifications: true,
   allowClipboard: true,
+  // Off by default. Nothing here refuses a passkey prompt for you once
+  // Windows has drawn it, so a page that asks unprompted -- Google's
+  // sign-in page does, the instant it loads -- lands you with a modal
+  // security-key box you have to dismiss by hand.
+  allowSecurityKeys: false,
   clearHistoryOnExit: false,
   showBookmarksBar: true,
   showNews: true,
@@ -286,6 +324,7 @@ function applySettings() {
   sessions.forEach((sess) => {
     syncRequestHandler(sess);
     syncHeaderHandler(sess);
+    syncWebAuthnPolicy(sess);
   });
   require('electron').webContents.getAllWebContents().forEach(applyWebRTCPolicy);
 }

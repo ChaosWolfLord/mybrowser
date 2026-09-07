@@ -296,11 +296,37 @@ once. Now:
 - Permissions default to deny; only notifications and clipboard are
   allowed, via both the request and check handlers.
 - `certificate-error` is never bypassed.
+- **WebAuthn has no permission hook.** `setPermissionRequestHandler` never
+  sees it, so a page can raise the native Windows security-key dialog with
+  no way for the app to decline. The only place to stand is inside the page
+  ahead of its scripts: `no-webauthn.js`, registered on each session with
+  `registerPreloadScript({ type: 'frame' })` and reaching page globals via
+  `contextBridge.executeInMainWorld`. A session preload is not the same
+  thing as `webPreferences.preload`, which `will-attach-webview` still
+  strips -- the guest cannot opt out of this one or choose its own.
+  `--disable-blink-features=WebAuthentication` does **not** work; it was
+  tried and `PublicKeyCredential` survived it.
+- Only guest sessions are covered, not the shell window's (it uses the
+  default session and is our own `file://` code).
 - The shell window refuses to navigate anywhere but `file://`.
 - `BLOCKED_HOSTS` cancels third-party tracker/ad requests at the network
   layer, and top-level `http://` is upgraded to `https://` (loopback
   exempt). Matching is exact-host-or-dot-suffix, so `myhotjar.com` does not
   match `hotjar.com`. Trim the list if a site you need misbehaves.
+
+## Two traps worth remembering
+
+- **Never touch `win.webContents` inside a `closed` handler.** The window is
+  already gone and it throws "Object has been destroyed" -- inside an event
+  handler, which Electron shows as an uncaught-exception dialog at the exact
+  moment you are quitting. Read `webContents.id` once when the window is
+  built and keep it. It does not reproduce on every close, so a clean test
+  run does not mean the hazard is gone; the fix has to be structural.
+- **Anything the shell loads at startup runs unattended.** The sidebar used
+  to load Gmail at boot even while the sidebar was collapsed, so a Google
+  sign-in page was running -- and raising a modal Windows dialog -- behind a
+  panel that was not on screen. Boot now skips it when collapsed and loads
+  on open instead.
 
 ## Shipping a change
 
