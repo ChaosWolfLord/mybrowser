@@ -369,6 +369,26 @@ its filtering is six static rulesets, which are ignored regardless. Do not
 assume a namespace existing means the feature works -- check that it has an
 effect.
 
+## Google sign-in and supervised accounts
+
+A Google sign-in that fails here is not automatically the browser's fault.
+The failure seen in this project was **"Accounts managed by Family Link are
+not allowed to sign in here"** -- Google declining a supervised account in a
+custom browser, because parental controls cannot be enforced in one. It is
+an account policy, not a bug, not a detection of anything Aurora does, and
+not something to engineer around.
+
+Worth recording because it was misdiagnosed first: the WebAuthn refusal
+preload was blamed, on the theory that replacing `navigator.credentials.get`
+left a non-native `toString()` for Google's integrity checks to notice. That
+theory was plausible, unverified -- the password step cannot be reached
+without credentials -- and wrong. The screenshot of the actual error settled
+it in one line. **Get the exact error text before theorising.**
+
+The preload was rewritten as a `Proxy` anyway, which is strictly better:
+`toString()` still reports `[native code]` and `PublicKeyCredential` is left
+in place.
+
 ## Two traps worth remembering
 
 - **Never touch `win.webContents` inside a `closed` handler.** The window is

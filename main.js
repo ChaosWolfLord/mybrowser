@@ -192,14 +192,14 @@ const DEFAULT_SETTINGS = {
   blockWebRTCLeak: true,
   allowNotifications: true,
   allowClipboard: true,
-  // On by default, despite the modal Windows box a page can raise with it.
-  // The reason it is on: the thing that was actually causing that box --
-  // the sidebar loading a Google sign-in page at startup behind a closed
-  // panel -- is fixed at the source now, and interfering with a page's
-  // credentials API is exactly the kind of thing Google's sign-in reads as
-  // a modified browser and refuses to log in to. Not worth that trade for
-  // a prompt that no longer appears on its own.
-  allowSecurityKeys: true,
+  // Off, so the modal Windows "Choose a passkey" box never appears. This
+  // was briefly turned back on when a Google sign-in failure looked like it
+  // might be caused by touching the credentials API. It was not -- that
+  // turned out to be Google refusing a Family Link supervised account,
+  // which has nothing to do with this -- and the refusal is now done with a
+  // Proxy that still reports [native code], so there is no longer a reason
+  // to leave the box switched on.
+  allowSecurityKeys: false,
   clearHistoryOnExit: false,
   showBookmarksBar: true,
   showNews: true,
@@ -1206,6 +1206,14 @@ function hardenWebContents(contents) {
       return {
         action: 'allow',
         overrideBrowserWindowOptions: {
+          // Without these the sign-in popup arrives as a bare Electron
+          // window carrying the default File/Edit/View/Window menu bar,
+          // which belongs to no part of this browser.
+          autoHideMenuBar: true,
+          width: 520,
+          height: 640,
+          minimizable: false,
+          icon: path.join(__dirname, 'icon.ico'),
           webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true }
         }
       };

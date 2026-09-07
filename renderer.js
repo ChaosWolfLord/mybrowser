@@ -917,7 +917,7 @@ const SETTINGS_SECTIONS = [
       {
         key: 'allowSecurityKeys',
         label: 'Allow passkeys and security keys',
-        hint: 'On. Turning it off stops a page raising the Windows security-key box on its own, but it does so by altering the page’s sign-in code, and Google reads that as a modified browser and may refuse to log you in. Leave it on unless that box is bothering you. Pages already open keep the old setting until you reload them.'
+        hint: 'Off, so the Windows “Choose a passkey” box never appears — sites fall back to a password instead. Turn it on if you actually sign in with a passkey or a security key. Pages already open keep the old setting until you reload them.'
       }
     ]
   },
