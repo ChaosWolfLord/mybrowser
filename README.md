@@ -16,11 +16,22 @@ Chrome extensions run, with limits. **Settings -> Extensions**:
 - **Add a .crx file** for something from the Chrome Web Store that you have
   already downloaded. Installing from the store page itself does not work.
 
+- **Paste a Chrome Web Store link.** The store's own Install button only
+  talks to Chrome, so browse it in a tab, copy the address of the
+  extension's page, and paste it in. Aurora fetches and unpacks it.
+
 Content scripts, MV3 service workers, popups and toolbar buttons all work.
 The available APIs are `action`, `alarms`, `declarativeNetRequest`, `dom`,
 `extension`, `i18n`, `idle`, `management`, `offscreen`, `proxy`, `runtime`,
 `scripting`, `storage`, `tabs` and `webRequest`; anything else an extension
 reaches for will throw. Extensions do not run in private windows.
+
+**Ad blockers mostly will not work.** Filter lists declared statically in a
+manifest are ignored by Electron; only rules an extension adds at runtime
+take effect. uBlock Origin Lite was tested and does not work -- it uses
+static lists, and its background script also needs a `permissions` API that
+does not exist here. Aurora's own tracker blocking (Settings -> Blocking) is
+unaffected and still runs.
 
 ## Installing it
 

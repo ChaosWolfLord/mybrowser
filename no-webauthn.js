@@ -1,16 +1,17 @@
-// Runs in every page the browser loads, before that page's own scripts.
+// Runs in every page, before that page's own scripts, when "Allow passkeys
+// and security keys" is turned off.
 //
-// Google's sign-in page calls navigator.credentials.get({publicKey}) the
-// moment it loads. Windows answers that with its own security-key dialog,
-// which the browser cannot decline for you -- so if anything ever loads a
-// sign-in page on its own, you get a modal box you did not ask for and have
-// to dismiss by hand. There is no permission hook for this in Electron: the
-// only place to stand is inside the page, before it runs.
+// This has to be done carefully. Google's sign-in runs integrity checks on
+// the page, and a browser that looks modified gets told it "may not be
+// secure" and refused a login. So the two obvious implementations are both
+// wrong: deleting window.PublicKeyCredential is a visible hole, and
+// assigning a plain function over navigator.credentials.get gives it a
+// toString() full of readable JavaScript instead of "[native code]".
 //
-// Ordinary password sign-in is untouched. Only publicKey requests -- the
-// passkey and security-key kind -- are refused, and they are refused with
-// the same error a real user cancellation produces, so sites fall back to
-// their password form instead of hanging.
+// A Proxy avoids both. Function.prototype.toString on a proxy of a native
+// function still reports native code, and the property keeps its identity,
+// so the page sees the API it expects -- it just gets the same refusal a
+// real person produces by dismissing the Windows dialog.
 const { contextBridge } = require('electron');
 
 try {
@@ -18,21 +19,25 @@ try {
     func: () => {
       if (!window.navigator || !navigator.credentials) return;
 
-      const refuse = (original) => function (options) {
-        if (options && options.publicKey) {
-          return Promise.reject(new DOMException(
-            'Passkeys and security keys are turned off in this browser.',
-            'NotAllowedError'));
+      const refuse = (original) => new Proxy(original, {
+        apply(target, thisArg, args) {
+          const options = args[0];
+          // Only passkey and security-key requests. Password autofill and
+          // federated sign-in go straight through.
+          if (options && options.publicKey) {
+            return Promise.reject(new DOMException(
+              'The request is not allowed by the user agent.', 'NotAllowedError'));
+          }
+          return Reflect.apply(target, thisArg, args);
         }
-        return original.call(navigator.credentials, options);
-      };
+      });
 
-      navigator.credentials.get = refuse(navigator.credentials.get);
-      navigator.credentials.create = refuse(navigator.credentials.create);
-
-      // Sites feature-detect on this before they ever call the API, so
-      // removing it is what actually stops most of them from trying.
-      try { delete window.PublicKeyCredential; } catch (err) {}
+      try {
+        navigator.credentials.get = refuse(navigator.credentials.get);
+        navigator.credentials.create = refuse(navigator.credentials.create);
+      } catch (err) {
+        // Frozen or unusual page. Leave it alone rather than break it.
+      }
     }
   });
 } catch (err) {

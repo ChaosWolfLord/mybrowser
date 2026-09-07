@@ -917,7 +917,7 @@ const SETTINGS_SECTIONS = [
       {
         key: 'allowSecurityKeys',
         label: 'Allow passkeys and security keys',
-        hint: 'Off, because a page can raise the Windows security-key box on its own, before you have even looked at it, and nothing here can dismiss it for you. Sites fall back to a password. Turn it on only if you actually sign in with a passkey; pages you already have open keep the old setting until you reload them.'
+        hint: 'On. Turning it off stops a page raising the Windows security-key box on its own, but it does so by altering the page’s sign-in code, and Google reads that as a modified browser and may refuse to log you in. Leave it on unless that box is bothering you. Pages already open keep the old setting until you reload them.'
       }
     ]
   },
@@ -985,26 +985,46 @@ function topicsRow() {
 
   const input = document.createElement('input');
   input.className = 'set-input';
+  input.id = 'news-topics-input';   // there is more than one .set-input now
   input.type = 'text';
   input.spellcheck = false;
   input.placeholder = 'Roblox, Minecraft, LEGO';
   input.value = newsTopics.join(', ');
 
-  const save = async () => {
+  // Saving only on blur lost the edit if you typed and then closed the
+  // window: the blur fires, but the message to the main process does not
+  // finish before the window is gone. Typing now saves on its own shortly
+  // after you stop, so the change is already on disk by the time you close
+  // anything.
+  let saveTimer = null;
+
+  const save = async (rewrite) => {
     const wanted = input.value.split(',').map((t) => t.trim()).filter(Boolean);
     try {
       newsTopics = await window.tabStore.news.setTopics(wanted);
     } catch (err) {
-      // Keep whatever we had rather than blanking the field.
+      return;   // keep what is on screen rather than blanking the field
     }
-    // Show what was actually kept, so a rejected or trimmed topic is visible.
-    input.value = newsTopics.join(', ');
+    // Only when you have finished. Rewriting the box mid-word would move the
+    // caret out from under you.
+    if (rewrite) input.value = newsTopics.join(', ');
   };
+
+  input.addEventListener('input', () => {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => save(false), 900);
+  });
 
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
   });
-  input.addEventListener('blur', save);
+
+  input.addEventListener('blur', () => {
+    clearTimeout(saveTimer);
+    // Now it is safe to show what was actually kept, so a trimmed or
+    // duplicate topic is visible.
+    save(true);
+  });
 
   main.appendChild(label);
   main.appendChild(hint);
@@ -1113,6 +1133,21 @@ async function renderSettings() {
 
 function openSettings() {
   openInternalTab('settings');
+}
+
+// The settings page is one long list, so a menu item that means "the
+// extensions part" has to actually take you there.
+function scrollToSettingsSection(title) {
+  const go = () => {
+    const head = Array.prototype.find.call(
+      document.querySelectorAll('.set-section'),
+      (el) => el.textContent === title
+    );
+    if (head) head.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  };
+  // The list is rebuilt asynchronously when the page opens.
+  setTimeout(go, 120);
+  setTimeout(go, 500);
 }
 
 document.getElementById('settings-reset').addEventListener('click', async () => {
@@ -1725,6 +1760,60 @@ function extensionsRow() {
   actions.appendChild(addCrx);
   wrap.appendChild(actions);
 
+  // The store's own Install button only talks to Chrome, so the way in is
+  // to browse the store normally and paste the address of the page.
+  const storeHint = document.createElement('div');
+  storeHint.className = 'set-hint';
+  storeHint.style.padding = '14px 10px 0 10px';
+  storeHint.textContent = 'Or paste a Chrome Web Store link. Its own Install button only works in Chrome, so browse the store in a tab, copy the address of the extension’s page, and paste it here.';
+  wrap.appendChild(storeHint);
+
+  const storeRow = document.createElement('div');
+  storeRow.className = 'set-actions storerow';
+
+  const storeInput = document.createElement('input');
+  storeInput.className = 'set-input';
+  storeInput.id = 'store-url-input';
+  storeInput.type = 'text';
+  storeInput.spellcheck = false;
+  storeInput.placeholder = 'https://chromewebstore.google.com/detail/…';
+
+  const storeAdd = document.createElement('button');
+  storeAdd.className = 'overlay-btn';
+  storeAdd.textContent = 'Install';
+
+  const install = async () => {
+    const text = storeInput.value.trim();
+    if (!text) return;
+    storeAdd.disabled = true;
+    say('Downloading…');
+    const r = await extensionsApi.addStore(text);
+    storeAdd.disabled = false;
+    if (r && r.ok) {
+      storeInput.value = '';
+      say('Installed ' + (r.name || 'it') + '.');
+    } else {
+      say((r && r.error) || 'That did not work.', true);
+    }
+  };
+
+  storeAdd.addEventListener('click', install);
+  storeInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); install(); }
+  });
+
+  const openStore = document.createElement('button');
+  openStore.className = 'overlay-btn';
+  openStore.textContent = 'Browse the store';
+  openStore.addEventListener('click', () => {
+    createTab('https://chromewebstore.google.com/category/extensions');
+  });
+
+  storeRow.appendChild(storeInput);
+  storeRow.appendChild(storeAdd);
+  storeRow.appendChild(openStore);
+  wrap.appendChild(storeRow);
+
   wrap.appendChild(note);
 
   return wrap;
@@ -1961,6 +2050,12 @@ function openAppMenu() {
   const anchor = document.getElementById('menu-btn').getBoundingClientRect();
   showMenu([
     { label: 'Settings', accel: 'Ctrl+,', click: openSettings },
+    {
+      label: 'Extensions',
+      // Same page, but findable: nobody thinks to look under Settings for
+      // the thing they want to install.
+      click: () => { openSettings(); scrollToSettingsSection('Extensions'); }
+    },
     { label: 'Inside Aurora', click: () => openInternalTab('guide') },
     { type: 'separator' },
     { label: 'History', accel: 'Ctrl+H', click: toggleHistory },

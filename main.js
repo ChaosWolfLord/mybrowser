@@ -192,11 +192,14 @@ const DEFAULT_SETTINGS = {
   blockWebRTCLeak: true,
   allowNotifications: true,
   allowClipboard: true,
-  // Off by default. Nothing here refuses a passkey prompt for you once
-  // Windows has drawn it, so a page that asks unprompted -- Google's
-  // sign-in page does, the instant it loads -- lands you with a modal
-  // security-key box you have to dismiss by hand.
-  allowSecurityKeys: false,
+  // On by default, despite the modal Windows box a page can raise with it.
+  // The reason it is on: the thing that was actually causing that box --
+  // the sidebar loading a Google sign-in page at startup behind a closed
+  // panel -- is fixed at the source now, and interfering with a page's
+  // credentials API is exactly the kind of thing Google's sign-in reads as
+  // a modified browser and refuses to log in to. Not worth that trade for
+  // a prompt that no longer appears on its own.
+  allowSecurityKeys: true,
   clearHistoryOnExit: false,
   showBookmarksBar: true,
   showNews: true,
@@ -678,6 +681,30 @@ function iconDataUri(dir, manifest) {
   return '';
 }
 
+// A manifest may write its name as "__MSG_extName__" and keep the real text
+// in _locales. Without this the settings page and the toolbar button end up
+// labelled with the raw placeholder, which is how uBlock Origin Lite first
+// showed up here.
+function resolveMessages(dir, manifest, text) {
+  if (typeof text !== 'string') return '';
+  const token = /^__MSG_([A-Za-z0-9_@]+)__$/.exec(text.trim());
+  if (!token) return text;
+
+  const locales = [manifest.default_locale, 'en_US', 'en'].filter(Boolean);
+  for (const locale of locales) {
+    try {
+      const file = path.join(dir, '_locales', locale, 'messages.json');
+      if (!file.startsWith(path.resolve(dir) + path.sep)) continue;
+      const table = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const entry = table[token[1]];
+      if (entry && typeof entry.message === 'string') return entry.message;
+    } catch (err) {
+      // Missing or unreadable for this locale. Try the next.
+    }
+  }
+  return text;
+}
+
 function describeExtension(entry) {
   const manifest = readManifest(entry.path);
   const live = liveExtensions.get(entry.path);
@@ -687,11 +714,17 @@ function describeExtension(entry) {
     enabled: entry.enabled,
     broken: !manifest,
     id: live ? live.id : null,
-    name: manifest ? String(manifest.name || path.basename(entry.path)) : path.basename(entry.path),
+    name: manifest
+      ? (resolveMessages(entry.path, manifest, String(manifest.name || '')) || path.basename(entry.path))
+      : path.basename(entry.path),
     version: manifest ? String(manifest.version || '') : '',
-    description: manifest ? String(manifest.description || '') : 'No readable manifest.json in this folder.',
+    description: manifest
+      ? resolveMessages(entry.path, manifest, String(manifest.description || ''))
+      : 'No readable manifest.json in this folder.',
     popup: typeof action.default_popup === 'string' ? action.default_popup : '',
-    title: typeof action.default_title === 'string' ? action.default_title : '',
+    title: manifest && typeof action.default_title === 'string'
+      ? resolveMessages(entry.path, manifest, action.default_title)
+      : '',
     hasAction: !!(manifest && (manifest.action || manifest.browser_action)),
     icon: manifest ? iconDataUri(entry.path, manifest) : '',
     // Unpacked into the profile means removing it should delete it; a folder
@@ -859,6 +892,66 @@ ipcMain.handle('extensions-add-crx', async (event) => {
 
 // The one you want while writing an extension: drop it and load it again
 // from disk, so an edit is one click away from running.
+// The Chrome Web Store's own Install button only talks to Chrome, so the
+// way in is to take the store page's address and fetch the packaged .crx
+// from the same endpoint Chrome itself updates from. Browse the store in a
+// tab like any other site, then paste the link here.
+const STORE_ID = /^[a-p]{32}$/;
+
+function storeIdFrom(text) {
+  const input = String(text || '').trim();
+  if (STORE_ID.test(input)) return input;
+  // .../detail/ublock-origin-lite/ddkjiahejlhfcafbddmgiahcphecmpfh?hl=en
+  const m = /(?:chromewebstore\.google\.com|chrome\.google\.com)\/[^\s]*?\/([a-p]{32})/i.exec(input);
+  return m ? m[1] : null;
+}
+
+ipcMain.handle('extensions-add-store', async (event, text) => {
+  const id = storeIdFrom(text);
+  if (!id) {
+    return { ok: false, error: 'That is not a Chrome Web Store link or extension ID.' };
+  }
+  if (extensionEntries.some((e) => path.basename(e.path) === id)) {
+    return { ok: false, error: 'That extension is already installed.' };
+  }
+
+  const url = 'https://clients2.google.com/service/update2/crx' +
+    '?response=redirect&acceptformat=crx2,crx3&prodversion=' + CHROME_MAJOR + '.0.0.0' +
+    '&x=' + encodeURIComponent('id=' + id + '&uc');
+
+  let dir = null;
+  try {
+    const response = await net.fetch(url);
+    if (!response.ok) throw new Error('The store returned HTTP ' + response.status + '.');
+    const bytes = Buffer.from(await response.arrayBuffer());
+    // A browser extension that size is not a browser extension.
+    if (bytes.length < 100) throw new Error('The store sent back nothing usable.');
+    if (bytes.length > 80 * 1024 * 1024) throw new Error('That download is implausibly large.');
+
+    const crxFile = path.join(app.getPath('temp'), 'aurora-store-' + id + '.crx');
+    fs.writeFileSync(crxFile, bytes);
+
+    fs.mkdirSync(extensionsDir, { recursive: true });
+    // Named by ID so the same extension cannot be installed twice under two
+    // different folder names.
+    dir = path.join(extensionsDir, id);
+    fs.mkdirSync(dir, { recursive: true });
+    await unpackCrx(crxFile, dir);
+    try { fs.unlinkSync(crxFile); } catch (e) {}
+
+    const manifest = readManifest(dir);
+    if (!manifest) throw new Error('No manifest.json was found in the downloaded extension.');
+
+    const entry = registerExtension(dir);
+    await loadOneExtension(entry);
+    sendToAll('extensions-changed');
+    return { ok: true, name: String(manifest.name || id) };
+  } catch (err) {
+    try { if (dir) fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {}
+    return { ok: false, error: err.message };
+  }
+});
+
 ipcMain.handle('extensions-reload', async (event, extPath) => {
   const entry = extensionEntries.find((e) => e.path === extPath);
   if (!entry) return { ok: false, error: 'That extension is no longer in the list.' };

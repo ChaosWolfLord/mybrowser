@@ -1151,3 +1151,6 @@ body.fullscreen .bookmarks { display: none; }
 
 .extnote { padding: 8px 10px 2px 10px; min-height: 15px; }
 .extnote.bad { color: #C98070; }
+
+.storerow { align-items: center; padding-top: 9px; }
+.storerow .set-input { margin-top: 0; max-width: 420px; }

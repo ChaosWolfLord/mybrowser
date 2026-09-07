@@ -349,11 +349,25 @@ in a service worker with every permission requested:
     management, offscreen, proxy, runtime, scripting, storage, tabs,
     webRequest
 
-`declarativeNetRequest` being present is why content blockers can work.
 Absent: `contextMenus`, `cookies`, `notifications`, `webNavigation`,
 `downloads`, `history`, `bookmarks`, `commands`, `sidePanel`, `permissions`.
 Extensions leaning on those will throw. There is also no `onClicked` for an
 action without a popup, which is why such buttons are drawn inert.
+
+**`declarativeNetRequest` is only half there, and the half that is missing
+is the one ad blockers use.** Measured, both ways:
+
+- Static `rule_resources` declared in the manifest are **ignored**. A test
+  extension whose only ruleset blocked `iana.org` blocked nothing.
+- Dynamic rules via `updateDynamicRules()` **do** block. The same rule added
+  at runtime from a service worker worked.
+
+So a blocker can only work here if it installs its rules at runtime.
+**uBlock Origin Lite does not work** and was tried: its service worker dies
+immediately on `browser.permissions.onRemoved` (no `permissions` API), and
+its filtering is six static rulesets, which are ignored regardless. Do not
+assume a namespace existing means the feature works -- check that it has an
+effect.
 
 ## Two traps worth remembering
 

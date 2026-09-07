@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('tabStore', {
     list: () => ipcRenderer.invoke('extensions-list'),
     addFolder: () => ipcRenderer.invoke('extensions-add-folder'),
     addCrx: () => ipcRenderer.invoke('extensions-add-crx'),
+    addStore: (text) => ipcRenderer.invoke('extensions-add-store', text),
     reload: (path) => ipcRenderer.invoke('extensions-reload', path),
     toggle: (path, on) => ipcRenderer.invoke('extensions-toggle', path, on),
     remove: (path) => ipcRenderer.invoke('extensions-remove', path),

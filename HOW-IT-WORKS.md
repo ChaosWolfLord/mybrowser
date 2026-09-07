@@ -305,11 +305,31 @@ were checked by actually trying them rather than by hoping:
 2. **Can a popup page get the `chrome.*` APIs?** Test: a popup that asks
    `chrome.tabs.query` how many tabs are open. It answered 4, correctly.
 
-**What doesn't work.** Extensions can call about fifteen different `chrome.*`
-toolkits here, including the one modern ad blockers use. But Chrome has many
-more, and the missing ones — right-click menus, cookies, notifications,
-reading your bookmarks — simply don't exist in Aurora, so an extension that
-reaches for one will break. That is the honest trade for not being Chrome.
+**What doesn't work — including something I got wrong.** Extensions can call
+about fifteen different `chrome.*` toolkits here. Chrome has many more, and
+the missing ones — right-click menus, cookies, notifications, reading your
+bookmarks — simply don't exist in Aurora, so an extension reaching for one
+breaks.
+
+I first wrote that ad blockers would work, because the toolkit they use
+(`declarativeNetRequest`) is in the list. Then uBlock Origin Lite got
+installed to try it, and it didn't block anything. Two reasons, both found by
+testing rather than reading:
+
+- A blocker ships its filter lists **declared in its manifest**, and Electron
+  ignores those completely. A test extension whose one rule was "block
+  iana.org" blocked nothing at all.
+- Rules added **while the extension is running** do work. Same rule, added
+  from code instead of the manifest, blocked immediately.
+
+So blockers can only work here if they build their rules at runtime, and
+uBlock Origin Lite doesn't — it also crashes on startup asking for an API
+Aurora doesn't have. The lesson is worth more than the feature: *a name
+existing in a list is not the same as the thing working.* Check that it has
+an effect.
+
+(Aurora blocks trackers itself, in Settings, and that is untouched by any of
+this.)
 
 You also can't install straight from the Chrome Web Store, because that page
 is talking to Chrome specifically. You download the `.crx` file and add it

@@ -15,5 +15,9 @@ Aurora provides these `chrome.*` APIs: `action`, `alarms`,
 `declarativeNetRequest`, `dom`, `extension`, `i18n`, `idle`, `management`,
 `offscreen`, `proxy`, `runtime`, `scripting`, `storage`, `tabs`,
 `webRequest`. Anything else (`contextMenus`, `cookies`, `notifications`,
-`bookmarks`, `history`, `commands`) does not exist here, and calling it
-throws.
+`bookmarks`, `history`, `commands`, `permissions`) does not exist here, and
+calling it throws.
+
+One sharp edge: `declarativeNetRequest` rules declared statically in
+`manifest.json` are ignored. Add them at runtime with `updateDynamicRules()`
+instead — those work.
