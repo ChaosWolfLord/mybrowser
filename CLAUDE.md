@@ -1,4 +1,4 @@
-# My Browser
+# Aurora
 
 A personal Electron browser for one user (ChaosWolfLord), on Windows only.
 Normal tabbed browsing on the left, a five-app sidebar on the right (Gmail,
@@ -33,7 +33,7 @@ single Google sign-in covers all five sidebar apps plus regular tabs.
   | Location | Window on screen |
   |---|---|
   | `OneDrive\Documents\BrowserPersonal\...` | **10,337 ms** |
-  | `%USERPROFILE%\MyBrowser` | **356 ms** |
+  | `%USERPROFILE%\Aurora` | **356 ms** |
 
   OneDrive Files On-Demand marks every file a `ReparsePoint`, so each read
   goes through its filter driver; spawning a renderer reads a great many

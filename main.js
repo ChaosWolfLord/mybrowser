@@ -16,6 +16,25 @@ const CHROME_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/' + CHROME_MAJOR + '.0.0.0 Safari/537.36';
 
+// Where history, bookmarks, settings, saved tabs and every cookie live.
+// Electron derives this from the app name, so renaming the app to Aurora
+// would have silently pointed it at an empty folder: no bookmarks, no
+// history, and signed out of Google everywhere. The old folder is moved
+// across once instead, and the path is then stated outright rather than
+// left to depend on the name.
+const userDataDir = path.join(app.getPath('appData'), 'Aurora');
+try {
+  const legacyDir = path.join(app.getPath('appData'), 'my-browser');
+  if (fs.existsSync(legacyDir) && !fs.existsSync(userDataDir)) {
+    fs.renameSync(legacyDir, userDataDir);
+  }
+} catch (err) {
+  // Left where it was. Worth saying out loud, because the symptom on its
+  // own -- everything suddenly empty -- looks like data loss.
+  console.error('Could not move the old profile folder across:', err.message);
+}
+app.setPath('userData', userDataDir);   // must happen before app is ready
+
 const tabsFile = path.join(app.getPath('userData'), 'tabs.json');
 const historyFile = path.join(app.getPath('userData'), 'history.json');
 const settingsFile = path.join(app.getPath('userData'), 'settings.json');
@@ -1212,7 +1231,7 @@ app.on('certificate-error', (event, webContents, url, error, certificate, callba
 });
 
 app.whenReady().then(() => {
-  if (process.platform === 'win32') app.setAppUserModelId('com.chaoswolflord.mybrowser');
+  if (process.platform === 'win32') app.setAppUserModelId('com.chaoswolflord.aurora');
   loadSettings();
   loadBookmarks();
   loadHistory();

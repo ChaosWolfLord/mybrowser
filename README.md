@@ -1,4 +1,4 @@
-# My Browser
+# Aurora
 
 A personal desktop browser (built on Chromium via Electron) for Windows, with
 Gmail, Calendar, Drive, YouTube, and Claude always available in a side panel
@@ -9,7 +9,7 @@ install themselves silently in the background.
 ## Installing it
 
 The browser runs from source, launched from the Start Menu like any other
-app. The installed copy lives at `%USERPROFILE%\MyBrowser` and is a git
+app. The installed copy lives at `%USERPROFILE%\Aurora` and is a git
 clone of this repository, which is also how it updates itself.
 
 **It must not run from the OneDrive folder.** That is not a preference:
@@ -17,7 +17,7 @@ clone of this repository, which is also how it updates itself.
 | Location | Time to a usable window |
 |---|---|
 | OneDrive | **10.3 seconds** |
-| `%USERPROFILE%\MyBrowser` | **0.36 seconds** |
+| `%USERPROFILE%\Aurora` | **0.36 seconds** |
 
 OneDrive Files On-Demand turns every file into a placeholder that its filter
 driver has to service on each read, and starting a browser reads thousands
@@ -33,15 +33,15 @@ because the folder it pointed at did not exist outside the container.
 To set it up from scratch:
 
 ```
-git clone https://github.com/ChaosWolfLord/mybrowser.git "$env:USERPROFILE\MyBrowser"
-cd "$env:USERPROFILE\MyBrowser"
+git clone https://github.com/ChaosWolfLord/mybrowser.git "$env:USERPROFILE\Aurora"
+cd "$env:USERPROFILE\Aurora"
 npm install
 ```
 
 Then make a Start Menu shortcut pointing at
-`%USERPROFILE%\MyBrowser
+`%USERPROFILE%\Aurora
 ode_modules\electron\dist\electron.exe`
-with `%USERPROFILE%\MyBrowser` as both the argument and the working
+with `%USERPROFILE%\Aurora` as both the argument and the working
 directory. `electron.exe` is a windowed program, so it opens no console.
 
 ## Updating

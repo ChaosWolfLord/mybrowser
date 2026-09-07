@@ -1,4 +1,4 @@
-# How This Browser Works
+# How Aurora Works
 
 This is a real web browser. Not a toy, not a website pretending to be one —
 it opens tabs, loads any site, blocks trackers, keeps history and bookmarks,

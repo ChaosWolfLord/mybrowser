@@ -31,7 +31,7 @@ function tempPageFor(svgFile) {
     '<!doctype html><meta charset="utf-8">' +
     '<style>html,body{margin:0;padding:0;background:transparent;overflow:hidden}' +
     'svg{display:block;width:100vw;height:100vh}</style>' + svg;
-  const file = path.join(os.tmpdir(), 'mybrowser-icon-' + path.parse(svgFile).name + '.html');
+  const file = path.join(os.tmpdir(), 'aurora-icon-' + path.parse(svgFile).name + '.html');
   fs.writeFileSync(file, html, 'utf-8');
   return file;
 }
