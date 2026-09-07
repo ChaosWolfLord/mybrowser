@@ -30,6 +30,7 @@
       <div class="suggest" id="suggest"></div>
     </div>
 
+    <div class="extbar" id="extbar"></div>
     <span class="privatebadge" id="private-badge">Private</span>
     <button class="newtabbtn" id="new-tab-btn" title="New tab">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
@@ -59,6 +60,10 @@
   <div class="tabstrip" id="tabstrip"></div>
     <div class="bookmarks" id="bookmarks"></div>
     <div class="loadbar" id="loadbar"><i></i></div>
+  </div>
+
+  <div class="extpopup" id="extpopup" hidden>
+    <webview id="extpopup-view" partition="persist:main" src="about:blank"></webview>
   </div>
 
   <div class="body">

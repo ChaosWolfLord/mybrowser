@@ -1,0 +1,27 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body {
+    margin: 0;
+    padding: 16px;
+    width: 300px;
+    background: #1A1613;
+    color: #EDE4D8;
+    font: 13px/1.5 -apple-system, "Segoe UI", sans-serif;
+  }
+  h1 { margin: 0 0 10px 0; font-size: 13px; color: #C98A3E; }
+  .row { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; }
+  .label { color: #9C948A; }
+  .value { text-align: right; word-break: break-word; }
+</style>
+</head>
+<body>
+  <h1>Hello Aurora</h1>
+  <div class="row"><span class="label">Page</span><span class="value" id="title">—</span></div>
+  <div class="row"><span class="label">Links on it</span><span class="value" id="links">—</span></div>
+  <div class="row"><span class="label">Tabs open</span><span class="value" id="tabs">—</span></div>
+  <script src="popup.js"></script>
+</body>
+</html>

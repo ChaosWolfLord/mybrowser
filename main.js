@@ -594,6 +594,327 @@ ipcMain.handle('news-topics-set', (event, topics) => {
   return settings.newsTopics.slice();
 });
 
+// ---------- Extensions ----------
+// Electron loads unpacked Chrome extensions and runs their content scripts
+// and MV3 service workers, but it draws none of their interface: no toolbar
+// button, no popup, no options page. Those are this browser's job, further
+// down and in the renderer.
+//
+// Two kinds are supported, and they are stored differently on purpose:
+//   - a .crx from the Chrome Web Store is unpacked into the profile, because
+//     nothing else is ever going to edit it;
+//   - a folder is registered where it already sits, so an extension you are
+//     writing can be edited in place and reloaded without reinstalling.
+const extensionsDir = path.join(app.getPath('userData'), 'Extensions');
+const extensionsFile = path.join(app.getPath('userData'), 'extensions.json');
+
+// path -> the Electron Extension object, once loaded this session.
+const liveExtensions = new Map();
+let extensionEntries = [];   // [{ path, enabled }], the durable registry
+
+function loadExtensionRegistry() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(extensionsFile, 'utf8'));
+    if (!Array.isArray(raw)) return;
+    extensionEntries = raw
+      .filter((e) => e && typeof e.path === 'string')
+      .map((e) => ({ path: e.path, enabled: e.enabled !== false }));
+  } catch (err) {
+    extensionEntries = [];
+  }
+}
+
+function saveExtensionRegistry() {
+  try {
+    fs.writeFileSync(extensionsFile, JSON.stringify(extensionEntries, null, 2));
+  } catch (err) {
+    console.error('Failed to save the extension list:', err.message);
+  }
+}
+
+function readManifest(dir) {
+  try {
+    // Extension manifests are allowed comments and a BOM; JSON.parse is not.
+    let text = fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8');
+    if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+    return JSON.parse(text);
+  } catch (err) {
+    return null;
+  }
+}
+
+// The manifest points at icon files inside the extension. The shell is a
+// file:// page and cannot read chrome-extension:// URLs, so the bytes are
+// inlined here instead.
+function iconDataUri(dir, manifest) {
+  const sources = [];
+  const action = manifest.action || manifest.browser_action || {};
+  const push = (value) => {
+    if (typeof value === 'string') sources.push(value);
+    else if (value && typeof value === 'object') {
+      Object.keys(value)
+        .sort((a, b) => Number(b) - Number(a))   // biggest first, it scales down better
+        .forEach((size) => sources.push(value[size]));
+    }
+  };
+  push(action.default_icon);
+  push(manifest.icons);
+
+  for (const rel of sources) {
+    if (typeof rel !== 'string') continue;
+    // Never follow a manifest out of its own folder.
+    const file = path.resolve(dir, rel);
+    if (!file.startsWith(path.resolve(dir) + path.sep)) continue;
+    try {
+      const bytes = fs.readFileSync(file);
+      if (bytes.length > 400 * 1024) continue;
+      const ext = path.extname(file).toLowerCase();
+      const type = ext === '.svg' ? 'image/svg+xml' : ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : 'image/png';
+      return 'data:' + type + ';base64,' + bytes.toString('base64');
+    } catch (err) {
+      // Missing icon file. Try the next one.
+    }
+  }
+  return '';
+}
+
+function describeExtension(entry) {
+  const manifest = readManifest(entry.path);
+  const live = liveExtensions.get(entry.path);
+  const action = manifest ? (manifest.action || manifest.browser_action || {}) : {};
+  return {
+    path: entry.path,
+    enabled: entry.enabled,
+    broken: !manifest,
+    id: live ? live.id : null,
+    name: manifest ? String(manifest.name || path.basename(entry.path)) : path.basename(entry.path),
+    version: manifest ? String(manifest.version || '') : '',
+    description: manifest ? String(manifest.description || '') : 'No readable manifest.json in this folder.',
+    popup: typeof action.default_popup === 'string' ? action.default_popup : '',
+    title: typeof action.default_title === 'string' ? action.default_title : '',
+    hasAction: !!(manifest && (manifest.action || manifest.browser_action)),
+    icon: manifest ? iconDataUri(entry.path, manifest) : '',
+    // Unpacked into the profile means removing it should delete it; a folder
+    // registered where you are writing it must never be deleted from here.
+    owned: path.resolve(entry.path).startsWith(path.resolve(extensionsDir) + path.sep)
+  };
+}
+
+// Extensions go into the ordinary session only. Chrome keeps them out of
+// incognito unless you opt each one in, and a private window here is meant
+// to leave nothing behind -- an extension's storage would.
+function extensionSession() {
+  return session.fromPartition('persist:main');
+}
+
+async function loadOneExtension(entry) {
+  if (!entry.enabled) return null;
+  if (!readManifest(entry.path)) throw new Error('no readable manifest.json');
+  const extension = await extensionSession().extensions.loadExtension(entry.path, {
+    allowFileAccess: true
+  });
+  liveExtensions.set(entry.path, extension);
+  return extension;
+}
+
+function unloadOneExtension(entry) {
+  const live = liveExtensions.get(entry.path);
+  if (!live) return;
+  try {
+    extensionSession().extensions.removeExtension(live.id);
+  } catch (err) {
+    // Already gone.
+  }
+  liveExtensions.delete(entry.path);
+}
+
+async function loadAllExtensions() {
+  for (const entry of extensionEntries) {
+    try {
+      await loadOneExtension(entry);
+    } catch (err) {
+      console.error('Extension failed to load (' + entry.path + '):', err.message);
+    }
+  }
+  sendToAll('extensions-changed');
+}
+
+// A .crx is a short binary header followed by an ordinary zip. Strip the
+// header, then let Windows do the unzipping rather than taking on a
+// dependency for it.
+function unpackCrx(crxFile, destDir) {
+  const buf = fs.readFileSync(crxFile);
+  if (buf.length < 16 || buf.toString('latin1', 0, 4) !== 'Cr24') {
+    throw new Error('This is not a Chrome extension file.');
+  }
+  const version = buf.readUInt32LE(4);
+  let zipStart;
+  if (version === 3) {
+    zipStart = 12 + buf.readUInt32LE(8);
+  } else if (version === 2) {
+    zipStart = 16 + buf.readUInt32LE(8) + buf.readUInt32LE(12);
+  } else {
+    throw new Error('Unsupported .crx version ' + version + '.');
+  }
+  if (zipStart >= buf.length) throw new Error('This .crx file is truncated.');
+
+  const zipFile = path.join(app.getPath('temp'), 'aurora-ext-' + Date.now() + '.zip');
+  fs.writeFileSync(zipFile, buf.subarray(zipStart));
+
+  return new Promise((resolve, reject) => {
+    execFile('powershell', [
+      '-NoProfile', '-NonInteractive', '-Command',
+      'Expand-Archive -LiteralPath ' + JSON.stringify(zipFile) +
+      ' -DestinationPath ' + JSON.stringify(destDir) + ' -Force'
+    ], { windowsHide: true, timeout: 120000 }, (err, stdout, stderr) => {
+      try { fs.unlinkSync(zipFile); } catch (e) {}
+      if (err) return reject(new Error(String(stderr || err.message).trim()));
+      resolve();
+    });
+  });
+}
+
+function uniqueDir(base, name) {
+  const safe = String(name).replace(/[^a-z0-9._-]+/gi, '-').replace(/^-+|-+$/g, '') || 'extension';
+  let dir = path.join(base, safe);
+  let n = 2;
+  while (fs.existsSync(dir)) dir = path.join(base, safe + '-' + n++);
+  return dir;
+}
+
+function registerExtension(dir) {
+  const resolved = path.resolve(dir);
+  if (extensionEntries.some((e) => path.resolve(e.path) === resolved)) {
+    throw new Error('That extension is already installed.');
+  }
+  const entry = { path: resolved, enabled: true };
+  extensionEntries.push(entry);
+  saveExtensionRegistry();
+  return entry;
+}
+
+ipcMain.handle('extensions-list', () => extensionEntries.map(describeExtension));
+
+// A folder is registered where it lies rather than copied, so the copy you
+// are editing is the copy that runs.
+ipcMain.handle('extensions-add-folder', async (event) => {
+  const owner = ownerWindow(event.sender) || mainWindow;
+  const result = await dialog.showOpenDialog(owner, {
+    title: 'Choose an unpacked extension folder',
+    properties: ['openDirectory'],
+    message: 'Pick the folder that contains manifest.json'
+  });
+  if (result.canceled || !result.filePaths.length) return { ok: false };
+
+  const dir = result.filePaths[0];
+  if (!readManifest(dir)) {
+    return { ok: false, error: 'That folder has no readable manifest.json in it.' };
+  }
+  try {
+    const entry = registerExtension(dir);
+    await loadOneExtension(entry);
+    sendToAll('extensions-changed');
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('extensions-add-crx', async (event) => {
+  const owner = ownerWindow(event.sender) || mainWindow;
+  const result = await dialog.showOpenDialog(owner, {
+    title: 'Choose a .crx extension file',
+    properties: ['openFile'],
+    filters: [{ name: 'Chrome extension', extensions: ['crx', 'zip'] }]
+  });
+  if (result.canceled || !result.filePaths.length) return { ok: false };
+
+  const crx = result.filePaths[0];
+  let dir = null;
+  try {
+    fs.mkdirSync(extensionsDir, { recursive: true });
+    dir = uniqueDir(extensionsDir, path.parse(crx).name);
+    fs.mkdirSync(dir, { recursive: true });
+    await unpackCrx(crx, dir);
+
+    if (!readManifest(dir)) {
+      // Some archives wrap everything in one top-level folder.
+      const inner = fs.readdirSync(dir)
+        .map((n) => path.join(dir, n))
+        .filter((p) => fs.statSync(p).isDirectory() && readManifest(p));
+      if (inner.length !== 1) throw new Error('No manifest.json was found inside that file.');
+      dir = inner[0];
+    }
+
+    const entry = registerExtension(dir);
+    await loadOneExtension(entry);
+    sendToAll('extensions-changed');
+    return { ok: true };
+  } catch (err) {
+    // Do not leave a half-unpacked folder sitting in the profile.
+    try { if (dir) fs.rmSync(path.join(extensionsDir, path.basename(dir)), { recursive: true, force: true }); } catch (e) {}
+    return { ok: false, error: err.message };
+  }
+});
+
+// The one you want while writing an extension: drop it and load it again
+// from disk, so an edit is one click away from running.
+ipcMain.handle('extensions-reload', async (event, extPath) => {
+  const entry = extensionEntries.find((e) => e.path === extPath);
+  if (!entry) return { ok: false, error: 'That extension is no longer in the list.' };
+  unloadOneExtension(entry);
+  try {
+    await loadOneExtension(entry);
+    sendToAll('extensions-changed');
+    return { ok: true };
+  } catch (err) {
+    sendToAll('extensions-changed');
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('extensions-toggle', async (event, extPath, enabled) => {
+  const entry = extensionEntries.find((e) => e.path === extPath);
+  if (!entry) return { ok: false };
+  entry.enabled = !!enabled;
+  saveExtensionRegistry();
+  if (entry.enabled) {
+    try {
+      await loadOneExtension(entry);
+    } catch (err) {
+      sendToAll('extensions-changed');
+      return { ok: false, error: err.message };
+    }
+  } else {
+    unloadOneExtension(entry);
+  }
+  sendToAll('extensions-changed');
+  return { ok: true };
+});
+
+ipcMain.handle('extensions-remove', async (event, extPath) => {
+  const index = extensionEntries.findIndex((e) => e.path === extPath);
+  if (index === -1) return { ok: false };
+  const entry = extensionEntries[index];
+  const owned = describeExtension(entry).owned;
+
+  unloadOneExtension(entry);
+  extensionEntries.splice(index, 1);
+  saveExtensionRegistry();
+
+  // Only ever delete files this browser unpacked itself. A folder you
+  // pointed it at is yours, and removing it here just unregisters it.
+  if (owned) {
+    try {
+      fs.rmSync(entry.path, { recursive: true, force: true });
+    } catch (err) {
+      console.error('Could not delete the extension folder:', err.message);
+    }
+  }
+  sendToAll('extensions-changed');
+  return { ok: true, deleted: owned };
+});
+
 // ---------- Links that belong to another program ----------
 // Roblox's Play button navigates to roblox-player://..., Epic uses
 // com.epicgames.launcher://, and so on. Nothing here handled those, so they
@@ -1233,6 +1554,7 @@ app.on('certificate-error', (event, webContents, url, error, certificate, callba
 app.whenReady().then(() => {
   if (process.platform === 'win32') app.setAppUserModelId('com.chaoswolflord.aurora');
   loadSettings();
+  loadExtensionRegistry();
   loadBookmarks();
   loadHistory();
   setInterval(flushHistory, 15 * 1000);
@@ -1240,6 +1562,9 @@ app.whenReady().then(() => {
   setTimeout(() => refreshNews(true), 4000);
   setInterval(() => refreshNews(true), 15 * 60 * 1000);
   mainWindow = createWindow();
+  // After the window, so its session exists and the first paint is not
+  // waiting on however many extensions are installed.
+  loadAllExtensions();
   setupAutoUpdate();
 
   app.on('activate', () => {

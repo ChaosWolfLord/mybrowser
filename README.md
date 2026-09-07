@@ -6,6 +6,22 @@ next to your normal browsing tabs. One Google sign-in applies everywhere in
 the app. Your open tabs are remembered across restarts. Updates download and
 install themselves silently in the background.
 
+## Extensions
+
+Chrome extensions run, with limits. **Settings -> Extensions**:
+
+- **Add a folder** for an unpacked extension. It runs from where it sits, so
+  you can edit the code and press **Reload** next to it -- no reinstall, no
+  restart. `examples/hello-aurora/` is a starting point.
+- **Add a .crx file** for something from the Chrome Web Store that you have
+  already downloaded. Installing from the store page itself does not work.
+
+Content scripts, MV3 service workers, popups and toolbar buttons all work.
+The available APIs are `action`, `alarms`, `declarativeNetRequest`, `dom`,
+`extension`, `i18n`, `idle`, `management`, `offscreen`, `proxy`, `runtime`,
+`scripting`, `storage`, `tabs` and `webRequest`; anything else an extension
+reaches for will throw. Extensions do not run in private windows.
+
 ## Installing it
 
 The browser runs from source, launched from the Start Menu like any other

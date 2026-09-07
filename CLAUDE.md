@@ -314,6 +314,47 @@ once. Now:
   exempt). Matching is exact-host-or-dot-suffix, so `myhotjar.com` does not
   match `hotjar.com`. Trim the list if a site you need misbehaves.
 
+## Extensions
+
+Electron runs the *engine* half of an extension and none of the interface.
+Loading, content scripts and MV3 service workers are Electron's; the toolbar
+button, the popup and the management UI are ours.
+
+- Load with `ses.extensions.loadExtension(dir, { allowFileAccess: true })`.
+  Nothing persists across restarts, so `extensions.json` in the profile is
+  the registry and every extension is loaded again on each boot.
+- **Content scripts do reach `<webview>` guests.** Verified: a content
+  script set an attribute on a guest's DOM. Note that `window.__x` set by a
+  content script is *not* visible to `executeJavaScript` -- separate worlds,
+  as in Chrome -- so check the DOM, not globals, when testing.
+- The popup has to be a `<webview>` pointed at
+  `chrome-extension://<id>/<popup>`. Only a guest on that session gets the
+  real `chrome.*` APIs.
+- Icons are inlined as data URIs by main. The shell is a `file://` page and
+  cannot load `chrome-extension://` images.
+- Extensions load into `persist:main` only, so they are absent from private
+  windows -- and the toolbar hides there, because a popup would otherwise be
+  forced onto the private partition where the extension does not exist.
+- A folder is registered where it sits (edit and Reload); a `.crx` is
+  unpacked into the profile. Only profile-owned copies are deleted on
+  Remove.
+- `.crx` is a header plus an ordinary zip: `Cr24`, version, header length,
+  then the zip. Stripped and handed to `Expand-Archive`, so no zip
+  dependency.
+
+**The API ceiling, measured rather than assumed** -- `Object.keys(chrome)`
+in a service worker with every permission requested:
+
+    action, alarms, declarativeNetRequest, dom, extension, i18n, idle,
+    management, offscreen, proxy, runtime, scripting, storage, tabs,
+    webRequest
+
+`declarativeNetRequest` being present is why content blockers can work.
+Absent: `contextMenus`, `cookies`, `notifications`, `webNavigation`,
+`downloads`, `history`, `bookmarks`, `commands`, `sidePanel`, `permissions`.
+Extensions leaning on those will throw. There is also no `onClicked` for an
+action without a popup, which is why such buttons are drawn inert.
+
 ## Two traps worth remembering
 
 - **Never touch `win.webContents` inside a `closed` handler.** The window is

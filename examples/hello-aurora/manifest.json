@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Hello Aurora",
+  "version": "1.0",
+  "description": "A starting point. Edit it, then press Reload in Settings.",
+  "permissions": ["storage", "tabs"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    { "matches": ["<all_urls>"], "js": ["content.js"], "run_at": "document_idle" }
+  ],
+  "action": { "default_title": "Hello Aurora", "default_popup": "popup.html" }
+}

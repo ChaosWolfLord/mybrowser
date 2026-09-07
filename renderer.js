@@ -932,6 +932,10 @@ const SETTINGS_SECTIONS = [
     ]
   },
   {
+    title: 'Extensions',
+    items: [{ type: 'extensions' }]
+  },
+  {
     title: 'New tab page',
     items: [
       {
@@ -1081,11 +1085,15 @@ async function renderSettings() {
     head.textContent = section.title;
     settingsList.appendChild(head);
     section.items.forEach((item) => {
-      settingsList.appendChild(
-        item.type === 'topics' ? topicsRow() : settingsRow(item, state.values)
-      );
+      let row;
+      if (item.type === 'topics') row = topicsRow();
+      else if (item.type === 'extensions') row = extensionsRow();
+      else row = settingsRow(item, state.values);
+      settingsList.appendChild(row);
     });
   });
+
+  renderExtensionSettings();
 
   const head = document.createElement('div');
   head.className = 'set-section';
@@ -1557,6 +1565,264 @@ document.getElementById('sidebar-collapse').addEventListener('click', toggleSide
 document.getElementById('sidebar-toggle-btn').addEventListener('click', toggleSidebar);
 setSidebarCollapsed(readPref('sidebarCollapsed', false));
 
+// ---------- Extensions ----------
+// Electron runs an extension's content scripts and service worker but draws
+// none of its interface, so the toolbar button and the popup are ours. The
+// popup itself has to be a <webview>: it is a chrome-extension:// page and
+// needs the real extension APIs, which only a guest on that session gets.
+
+const extbar = document.getElementById('extbar');
+const extPopup = document.getElementById('extpopup');
+const extPopupView = document.getElementById('extpopup-view');
+const extensionsApi = window.tabStore && window.tabStore.extensions;
+let extensions = [];
+let openExtensionId = null;
+
+function closeExtensionPopup() {
+  if (!openExtensionId) return;
+  openExtensionId = null;
+  extPopup.hidden = true;
+  // Blanked rather than left loaded, so a popup is not quietly running in
+  // the background with a tab's worth of privileges.
+  try { extPopupView.setAttribute('src', 'about:blank'); } catch (err) {}
+  Array.prototype.forEach.call(extbar.children, (b) => b.classList.remove('open'));
+}
+
+function openExtensionPopup(ext, button) {
+  if (openExtensionId === ext.id) return closeExtensionPopup();
+  closeExtensionPopup();
+  if (!ext.id || !ext.popup) return;
+
+  openExtensionId = ext.id;
+  button.classList.add('open');
+
+  const rect = button.getBoundingClientRect();
+  extPopup.style.top = Math.round(rect.bottom + 6) + 'px';
+  // Kept on screen when the button is near the right edge.
+  const width = 380;
+  const left = Math.min(Math.max(8, rect.right - width), window.innerWidth - width - 8);
+  extPopup.style.left = Math.round(left) + 'px';
+  extPopup.style.width = width + 'px';
+
+  extPopupView.setAttribute('src', 'chrome-extension://' + ext.id + '/' + ext.popup.replace(/^\/+/, ''));
+  extPopup.hidden = false;
+}
+
+function renderExtensionBar() {
+  extbar.textContent = '';
+  // Extensions are loaded into the ordinary session only, so in a private
+  // window there is nothing behind these buttons -- and a popup would be
+  // forced onto the private partition, where the extension does not exist.
+  const shown = windowInfo.isPrivate
+    ? []
+    : extensions.filter((e) => e.enabled && e.id && e.hasAction);
+
+  shown.forEach((ext) => {
+    const button = document.createElement('button');
+    button.className = 'extbtn';
+    button.title = ext.title || ext.name;
+
+    if (ext.icon) {
+      const img = document.createElement('img');
+      img.src = ext.icon;
+      img.alt = '';
+      button.appendChild(img);
+    } else {
+      // No icon in the manifest: fall back to the initial, which at least
+      // tells two extensions apart.
+      const letter = document.createElement('span');
+      letter.className = 'extletter';
+      letter.textContent = (ext.name || '?').trim().charAt(0).toUpperCase();
+      button.appendChild(letter);
+    }
+
+    if (ext.popup) {
+      button.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openExtensionPopup(ext, button);
+      });
+    } else {
+      // No popup declared. Chrome would fire an onClicked event here, which
+      // Electron does not deliver, so say so rather than do nothing.
+      button.classList.add('inert');
+      button.title = ext.name + ' has no popup to open.';
+    }
+
+    extbar.appendChild(button);
+  });
+
+  extbar.hidden = shown.length === 0;
+}
+
+async function refreshExtensions() {
+  if (!extensionsApi) return;
+  try {
+    extensions = await extensionsApi.list();
+  } catch (err) {
+    extensions = [];
+  }
+  renderExtensionBar();
+  if (typeof renderExtensionSettings === 'function') renderExtensionSettings();
+}
+
+// Clicking anywhere else, or leaving the window, closes the popup -- the
+// same way the menu behaves.
+document.addEventListener('mousedown', (e) => {
+  if (!openExtensionId) return;
+  if (extPopup.contains(e.target) || extbar.contains(e.target)) return;
+  closeExtensionPopup();
+});
+window.addEventListener('blur', closeExtensionPopup);
+
+if (extensionsApi && extensionsApi.onChange) extensionsApi.onChange(refreshExtensions);
+
+// The extensions list on the settings page. Rebuilt in place rather than by
+// re-rendering the whole page, so toggling one does not scroll you away.
+function extensionsRow() {
+  const wrap = document.createElement('div');
+  wrap.className = 'set-extensions';
+  wrap.id = 'set-extensions';
+
+  const list = document.createElement('div');
+  list.className = 'extlist';
+  list.id = 'extlist';
+  wrap.appendChild(list);
+
+  const actions = document.createElement('div');
+  actions.className = 'set-actions';
+
+  const note = document.createElement('div');
+  note.className = 'set-hint extnote';
+
+  const say = (text, bad) => {
+    note.textContent = text;
+    note.classList.toggle('bad', !!bad);
+  };
+
+  const addFolder = document.createElement('button');
+  addFolder.className = 'overlay-btn';
+  addFolder.textContent = 'Add a folder\u2026';
+  addFolder.title = 'For an extension you are writing. It runs from where it sits, so you can edit and reload it.';
+  addFolder.addEventListener('click', async () => {
+    const r = await extensionsApi.addFolder();
+    if (r && r.error) say(r.error, true);
+    else if (r && r.ok) say('Added.');
+  });
+
+  const addCrx = document.createElement('button');
+  addCrx.className = 'overlay-btn';
+  addCrx.textContent = 'Add a .crx file\u2026';
+  addCrx.title = 'A Chrome Web Store extension you have already downloaded.';
+  addCrx.addEventListener('click', async () => {
+    say('Unpacking\u2026');
+    const r = await extensionsApi.addCrx();
+    if (r && r.error) say(r.error, true);
+    else if (r && r.ok) say('Added.');
+    else say('');
+  });
+
+  actions.appendChild(addFolder);
+  actions.appendChild(addCrx);
+  wrap.appendChild(actions);
+
+  wrap.appendChild(note);
+
+  return wrap;
+}
+
+function renderExtensionSettings() {
+  const list = document.getElementById('extlist');
+  if (!list) return;
+  list.textContent = '';
+
+  if (!extensions.length) {
+    const empty = document.createElement('div');
+    empty.className = 'set-hint';
+    empty.style.padding = '4px 10px 10px 10px';
+    empty.textContent = 'Nothing installed yet.';
+    list.appendChild(empty);
+    return;
+  }
+
+  extensions.forEach((ext) => {
+    const row = document.createElement('div');
+    row.className = 'extrow' + (ext.enabled ? '' : ' off') + (ext.broken ? ' broken' : '');
+
+    const icon = document.createElement('div');
+    icon.className = 'exticon';
+    if (ext.icon) {
+      const img = document.createElement('img');
+      img.src = ext.icon;
+      img.alt = '';
+      icon.appendChild(img);
+    } else {
+      icon.textContent = (ext.name || '?').trim().charAt(0).toUpperCase();
+    }
+    row.appendChild(icon);
+
+    const main = document.createElement('div');
+    main.className = 'extmain';
+
+    const name = document.createElement('div');
+    name.className = 'extname';
+    name.textContent = ext.name + (ext.version ? '  ' + ext.version : '');
+    main.appendChild(name);
+
+    const desc = document.createElement('div');
+    desc.className = 'set-hint';
+    desc.textContent = ext.description || '';
+    main.appendChild(desc);
+
+    const where = document.createElement('div');
+    where.className = 'extpath';
+    // Folder extensions show their path because that is the thing you are
+    // editing; unpacked ones live in the profile and the path is noise.
+    where.textContent = ext.owned ? 'Unpacked into this browser\u2019s profile' : ext.path;
+    main.appendChild(where);
+
+    row.appendChild(main);
+
+    const buttons = document.createElement('div');
+    buttons.className = 'extbtns';
+
+    if (!ext.owned) {
+      const reload = document.createElement('button');
+      reload.className = 'overlay-btn';
+      reload.textContent = 'Reload';
+      reload.title = 'Load it again from disk, after you have changed the code.';
+      reload.addEventListener('click', async () => {
+        reload.textContent = 'Reloading\u2026';
+        const r = await extensionsApi.reload(ext.path);
+        reload.textContent = 'Reload';
+        const note = document.querySelector('.extnote');
+        if (note) {
+          note.textContent = r && r.error ? r.error : 'Reloaded ' + ext.name + '.';
+          note.classList.toggle('bad', !!(r && r.error));
+        }
+      });
+      buttons.appendChild(reload);
+    }
+
+    const toggle = document.createElement('button');
+    toggle.className = 'overlay-btn';
+    toggle.textContent = ext.enabled ? 'Turn off' : 'Turn on';
+    toggle.addEventListener('click', () => extensionsApi.toggle(ext.path, !ext.enabled));
+    buttons.appendChild(toggle);
+
+    const remove = document.createElement('button');
+    remove.className = 'overlay-btn danger';
+    remove.textContent = 'Remove';
+    remove.title = ext.owned
+      ? 'Deletes the unpacked copy from this browser.'
+      : 'Unregisters it. Your folder is left alone.';
+    remove.addEventListener('click', () => extensionsApi.remove(ext.path));
+    buttons.appendChild(remove);
+
+    row.appendChild(buttons);
+    list.appendChild(row);
+  });
+}
+
 // ---------- Feeding the new tab page ----------
 
 // That page has no preload and its policy blocks network calls, so it
@@ -1944,6 +2210,7 @@ window.addEventListener('keydown', (e) => {
     }
   }
   await refreshBookmarks();
+  await refreshExtensions();
 
   // The sidebar's first panel waits for the shell to go idle, so it never
   // competes with the page you actually opened the browser to see -- and it

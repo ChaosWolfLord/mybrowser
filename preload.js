@@ -26,6 +26,15 @@ contextBridge.exposeInMainWorld('tabStore', {
   setWindowFullscreen: (on) => ipcRenderer.invoke('window-fullscreen', on),
   newWindow: (isPrivate) => ipcRenderer.invoke('new-window', { private: !!isPrivate }),
   windowInfo: () => ipcRenderer.invoke('window-info'),
+  extensions: {
+    list: () => ipcRenderer.invoke('extensions-list'),
+    addFolder: () => ipcRenderer.invoke('extensions-add-folder'),
+    addCrx: () => ipcRenderer.invoke('extensions-add-crx'),
+    reload: (path) => ipcRenderer.invoke('extensions-reload', path),
+    toggle: (path, on) => ipcRenderer.invoke('extensions-toggle', path, on),
+    remove: (path) => ipcRenderer.invoke('extensions-remove', path),
+    onChange: (fn) => ipcRenderer.on('extensions-changed', () => fn())
+  },
   news: {
     get: () => ipcRenderer.invoke('news-get'),
     setTopics: (topics) => ipcRenderer.invoke('news-topics-set', topics)

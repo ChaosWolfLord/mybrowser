@@ -1050,3 +1050,104 @@ body.fullscreen .bookmarks { display: none; }
   display: none;
 }
 .sidebar-panels webview.active { display: flex; }
+
+/* ---------- Extensions ---------- */
+
+.extbar {
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.extbar[hidden] { display: none; }
+
+.extbtn {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+.extbtn:hover { background: rgba(237,228,216,0.08); }
+.extbtn.open { background: rgba(201,138,62,0.18); }
+.extbtn img { width: 17px; height: 17px; object-fit: contain; }
+.extbtn.inert { opacity: 0.45; cursor: default; }
+.extletter {
+  width: 19px;
+  height: 19px;
+  border-radius: 5px;
+  background: rgba(201,138,62,0.2);
+  color: #C98A3E;
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* The popup floats over the page rather than pushing it, and carries the
+   same shadow as the menu so the two read as the same kind of thing. */
+.extpopup {
+  position: fixed;
+  z-index: 60;
+  border-radius: 11px;
+  overflow: hidden;
+  background: #1A1613;
+  border: 1px solid rgba(237,228,216,0.11);
+  box-shadow: 0 16px 44px rgba(0,0,0,0.55);
+}
+.extpopup[hidden] { display: none; }
+.extpopup webview { display: block; width: 100%; height: 480px; border: 0; }
+
+.set-extensions { padding: 2px 0 0 0; }
+
+.extlist { display: flex; flex-direction: column; gap: 6px; padding: 4px 10px 8px 10px; }
+
+.extrow {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 11px 12px;
+  border-radius: 9px;
+  background: rgba(237,228,216,0.035);
+  border: 1px solid rgba(237,228,216,0.07);
+}
+.extrow.off { opacity: 0.5; }
+.extrow.broken { border-color: rgba(184,92,74,0.5); }
+
+.exticon {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  background: rgba(201,138,62,0.16);
+  color: #C98A3E;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.exticon img { width: 20px; height: 20px; object-fit: contain; }
+
+.extmain { flex: 1; min-width: 0; }
+.extname { font-size: 13px; color: #EDE4D8; margin-bottom: 2px; }
+.extpath {
+  margin-top: 5px;
+  font-size: 10.5px;
+  color: #6E6862;
+  word-break: break-all;
+}
+.extbtns { display: flex; gap: 6px; flex-shrink: 0; align-items: center; }
+
+.overlay-btn.danger { color: #C98070; }
+.overlay-btn.danger:hover { background: rgba(184,92,74,0.2); color: #F0D6CE; }
+
+.extnote { padding: 8px 10px 2px 10px; min-height: 15px; }
+.extnote.bad { color: #C98070; }

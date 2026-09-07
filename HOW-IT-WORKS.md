@@ -280,7 +280,49 @@ stay up to date is a bad tool.
 
 ---
 
-## 9. The map
+## 9. Extensions, and doing half the job yourself
+
+An extension is a little program that rides along inside the browser. An ad
+blocker is one. So is a dark-mode button.
+
+Here is the surprising part. Electron will run an extension's *code* — the
+scripts it injects into pages, and its background worker — but it draws none
+of its *interface*. No toolbar button. No popup. Nothing. Chrome draws all of
+that itself, and Electron simply isn't Chrome.
+
+So Aurora does that half. It reads the extension's `manifest.json`, finds the
+icon and the popup page it declares, draws a button for it up in the toolbar,
+and when you click that button it opens the extension's popup — in a tab-like
+webview, because a popup is a real page that needs the real extension APIs.
+
+Two things had to be checked before any of this was worth building, and both
+were checked by actually trying them rather than by hoping:
+
+1. **Do content scripts reach pages here?** Every page in Aurora lives inside
+   a `<webview>`, which is a slightly unusual place for an extension to reach.
+   Test: an extension that stamps an attribute onto the page. Load a real
+   site, look for the stamp. It was there.
+2. **Can a popup page get the `chrome.*` APIs?** Test: a popup that asks
+   `chrome.tabs.query` how many tabs are open. It answered 4, correctly.
+
+**What doesn't work.** Extensions can call about fifteen different `chrome.*`
+toolkits here, including the one modern ad blockers use. But Chrome has many
+more, and the missing ones — right-click menus, cookies, notifications,
+reading your bookmarks — simply don't exist in Aurora, so an extension that
+reaches for one will break. That is the honest trade for not being Chrome.
+
+You also can't install straight from the Chrome Web Store, because that page
+is talking to Chrome specifically. You download the `.crx` file and add it
+yourself. A `.crx`, it turns out, is just a zip file wearing a small hat: a
+few bytes of header, then an ordinary archive. Aurora takes the hat off and
+unzips the rest.
+
+**The bit for you.** If you write your own extension, add it as a *folder*.
+It then runs from wherever you're keeping it, so you can change the code and
+hit **Reload** — no reinstalling, no restarting the browser. Start by copying
+`examples/hello-aurora/`.
+
+## 10. The map
 
 | File | What it does |
 |---|---|
@@ -295,7 +337,7 @@ stay up to date is a bad tool.
 
 ---
 
-## 10. Things that surprised us
+## 11. Things that surprised us
 
 Real bugs from building this. Every one of them is a lesson that generalises.
 
