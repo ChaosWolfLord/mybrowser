@@ -866,9 +866,15 @@ const SETTINGS_SECTIONS = [
     title: 'Blocking',
     items: [
       {
+        key: 'blockAds',
+        label: 'Block ads',
+        hint: 'Uses EasyList and EasyPrivacy — the same public filter lists uBlock and AdBlock Plus use — to refuse ads and trackers before the request leaves your machine. They update themselves every few days.'
+      },
+      { type: 'adblock' },
+      {
         key: 'blockTrackers',
-        label: 'Block trackers and ads',
-        hint: 'Refuses known tracking, analytics and ad hosts before the request leaves your machine. Also the biggest thing you can do for page speed.'
+        label: 'Block known tracker hosts',
+        hint: 'A short built-in list, separate from the filter lists above and kept because it works even before those have downloaded.'
       },
       {
         key: 'stripTrackingParams',
@@ -965,6 +971,74 @@ function makeSwitch(on, onToggle) {
   el.setAttribute('aria-checked', on ? 'true' : 'false');
   el.addEventListener('click', () => onToggle(!el.classList.contains('on')));
   return el;
+}
+
+// What the ad blocker is actually doing right now, under its switch.
+function adblockRow() {
+  const row = document.createElement('div');
+  row.className = 'set-row adblock-row';
+  row.id = 'adblock-row';
+
+  const main = document.createElement('div');
+  main.className = 'set-main';
+
+  const status = document.createElement('div');
+  status.className = 'set-hint';
+  status.id = 'adblock-status';
+  status.textContent = 'Checking…';
+  main.appendChild(status);
+
+  const actions = document.createElement('div');
+  actions.className = 'set-actions';
+  actions.style.paddingLeft = '0';
+
+  const update = document.createElement('button');
+  update.className = 'overlay-btn';
+  update.id = 'adblock-update';
+  update.textContent = 'Update filter lists';
+  update.addEventListener('click', async () => {
+    update.disabled = true;
+    await window.tabStore.adblock.update();
+    update.disabled = false;
+    refreshAdblockStatus();
+  });
+
+  actions.appendChild(update);
+  main.appendChild(actions);
+  row.appendChild(main);
+  return row;
+}
+
+function whenAgo(ms) {
+  if (!ms) return 'never';
+  const mins = Math.round((Date.now() - ms) / 60000);
+  if (mins < 2) return 'just now';
+  if (mins < 60) return mins + ' minutes ago';
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return hours === 1 ? 'an hour ago' : hours + ' hours ago';
+  const days = Math.round(hours / 24);
+  return days === 1 ? 'yesterday' : days + ' days ago';
+}
+
+async function refreshAdblockStatus() {
+  const el = document.getElementById('adblock-status');
+  if (!el || !window.tabStore.adblock) return;
+  let s;
+  try {
+    s = await window.tabStore.adblock.status();
+  } catch (err) {
+    return;
+  }
+
+  if (!s.enabled) {
+    el.textContent = 'Off. The filter lists stay on disk, so turning it back on is instant.';
+    return;
+  }
+  const parts = [s.note];
+  if (s.hiding) parts.push(s.hiding.toLocaleString() + ' hiding rules');
+  if (s.rules) parts.push('updated ' + whenAgo(s.updatedAt));
+  parts.push('blocked ' + s.blocked.toLocaleString() + ' since this browser started');
+  el.textContent = parts.join(' · ');
 }
 
 // The one setting that is not a switch.
@@ -1106,7 +1180,8 @@ async function renderSettings() {
     settingsList.appendChild(head);
     section.items.forEach((item) => {
       let row;
-      if (item.type === 'topics') row = topicsRow();
+      if (item.type === 'adblock') row = adblockRow();
+      else if (item.type === 'topics') row = topicsRow();
       else if (item.type === 'extensions') row = extensionsRow();
       else row = settingsRow(item, state.values);
       settingsList.appendChild(row);
@@ -1114,6 +1189,7 @@ async function renderSettings() {
   });
 
   renderExtensionSettings();
+  refreshAdblockStatus();
 
   const head = document.createElement('div');
   head.className = 'set-section';
@@ -1710,6 +1786,9 @@ document.addEventListener('mousedown', (e) => {
 window.addEventListener('blur', closeExtensionPopup);
 
 if (extensionsApi && extensionsApi.onChange) extensionsApi.onChange(refreshExtensions);
+if (window.tabStore && window.tabStore.adblock) {
+  window.tabStore.adblock.onChange(() => refreshAdblockStatus());
+}
 
 // The extensions list on the settings page. Rebuilt in place rather than by
 // re-rendering the whole page, so toggling one does not scroll you away.

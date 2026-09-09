@@ -36,6 +36,11 @@ contextBridge.exposeInMainWorld('tabStore', {
     remove: (path) => ipcRenderer.invoke('extensions-remove', path),
     onChange: (fn) => ipcRenderer.on('extensions-changed', () => fn())
   },
+  adblock: {
+    status: () => ipcRenderer.invoke('adblock-status'),
+    update: () => ipcRenderer.invoke('adblock-update'),
+    onChange: (fn) => ipcRenderer.on('adblock-changed', () => fn())
+  },
   news: {
     get: () => ipcRenderer.invoke('news-get'),
     setTopics: (topics) => ipcRenderer.invoke('news-topics-set', topics)

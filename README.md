@@ -6,6 +6,18 @@ next to your normal browsing tabs. One Google sign-in applies everywhere in
 the app. Your open tabs are remembered across restarts. Updates download and
 install themselves silently in the background.
 
+## Ad blocking
+
+**Settings -> Blocking -> Block ads**, on by default. It uses EasyList and
+EasyPrivacy, the same public filter lists uBlock and AdBlock Plus use --
+about 107,000 rules between them, downloaded on first run and refreshed
+every few days. The settings page shows how many rules are loaded, when they
+last updated, and how many requests have been blocked since launch.
+
+It is built into the browser rather than being an extension, because
+Electron ignores the filter lists extensions declare in their manifests --
+which is why uBlock Origin Lite does not work here.
+
 ## Extensions
 
 Chrome extensions run, with limits. **Settings -> Extensions**:

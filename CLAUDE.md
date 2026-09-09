@@ -369,6 +369,40 @@ its filtering is six static rulesets, which are ignored regardless. Do not
 assume a namespace existing means the feature works -- check that it has an
 effect.
 
+## The ad blocker
+
+`adblock.js` is the engine; `main.js` keeps the lists on disk and current.
+It is in the browser rather than in an extension because Electron ignores
+the static rulesets extensions declare in their manifests, which is exactly
+how ad blockers ship filters -- see the extensions section above.
+
+EasyList and EasyPrivacy, refreshed every five days, cached in
+`<userData>/Filters`. Measured on the real lists: **107,061 network rules
+and 16,304 hiding selectors, parsed in 318 ms, 69.8 MB of heap, 0.0062 ms
+per request** -- about 3.7 ms added to a 600-request page.
+
+- **`onBeforeRequest` runs on every request, so matching cannot be linear.**
+  Rules are filed under a substring that must appear in the URL, and a
+  request only tests the buckets its own tokens implicate. Only 62 rules
+  have no usable token and are tested every time.
+- **The single biggest win was skipping regex entirely for `||host^`.**
+  That shape is most of a filter list, and a walk up the request host's own
+  labels answers it exactly. Adding that fast path cut heap from 117 MB to
+  70 MB, parse time from 954 ms to 318 ms, and per-request cost by 9x.
+- **A filter with no type option must never match `document`.** Otherwise
+  the first ad rule to match blanks the whole tab. `shouldBlock` refuses
+  `mainFrame` outright as a second guard.
+- **A rule carrying an option this engine does not implement is dropped**,
+  not applied without it. A filter enforced more broadly than its author
+  wrote it breaks pages.
+- Only domain-specific cosmetic rules are kept. The generic ones are tens of
+  thousands of selectors and would cost more than they are worth on every
+  page.
+- Parsing blocks the main process for ~300 ms, so it happens 2.5 s after
+  launch, not in front of the window.
+- `adblock.js` had to be added to `build.files` -- that array is an
+  allowlist.
+
 ## Google sign-in and supervised accounts
 
 A Google sign-in that fails here is not automatically the browser's fault.
@@ -405,11 +439,27 @@ in place.
 
 ## Shipping a change
 
-**Smart App Control is enforced on this machine and blocks building the
-installer** -- it truncated a 1.0.1 build to 188KB mid-write. Until that is
-resolved, changes ship by running from source (`npm start`), not by
-packaging. There are no published GitHub releases yet, so auto-update has
-never actually run.
+**Smart App Control is enforced on this machine, and as of 9 Sep 2026 it
+blocks the app from running at all** -- not just from being packaged. It
+had blocked installer builds for a while (truncating a 1.0.1 build to 188KB
+mid-write); running from source still worked. It no longer does:
+
+    Start-Process : An Application Control policy has blocked this file.
+
+CodeIntegrity/Operational logs it as event 3077/3118 against
+`node_modules\electron\dist\electron.exe`, which is **unsigned** (checked:
+`Get-AuthenticodeSignature` reports `NotSigned`). SAC blocks unsigned
+binaries it has no reputation for, and its verdict on this one changed
+between 15:5x and 16:00 on that day -- nothing in the repo changed.
+
+There is no code-side fix. SAC is not path-based, and a self-signed
+certificate does not satisfy it. The only lever is the Smart App Control
+setting itself, which **can only ever be turned off, never back on without
+reinstalling Windows** -- so it is the machine owner's decision, not one to
+make on their behalf. Diagnose with:
+
+    (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy').VerifiedAndReputablePolicyState
+    # 0 = off, 1 = enforced, 2 = evaluation
 
 If packaging is unblocked later: bump `version` in `package.json`, then
 `$env:GH_TOKEN = "..."; npm run release`. The repo (public) is

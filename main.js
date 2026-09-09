@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
 const { autoUpdater } = require('electron-updater');
+const adblock = require('./adblock');
 
 // Built from the Chromium actually inside this Electron, never hardcoded.
 // Google serves Gmail and Calendar a stripped-down legacy interface to any
@@ -192,6 +193,7 @@ const DEFAULT_SETTINGS = {
   blockWebRTCLeak: true,
   allowNotifications: true,
   allowClipboard: true,
+  blockAds: true,
   // Off, so the modal Windows "Choose a passkey" box never appears. This
   // was briefly turned back on when a Google sign-in failure looked like it
   // might be caused by touching the credentials API. It was not -- that
@@ -292,12 +294,18 @@ function applyWebRTCPolicy(contents) {
 }
 
 function syncRequestHandler(sess) {
-  const wanted = settings.blockTrackers || settings.httpsOnly || settings.stripTrackingParams;
+  const wanted = settings.blockTrackers || settings.httpsOnly ||
+    settings.stripTrackingParams || settings.blockAds;
   if (!wanted) return sess.webRequest.onBeforeRequest(null);
 
   sess.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, (details, callback) => {
     if (settings.blockTrackers && isTracker(details.url)) {
       blockedCount++;
+      return callback({ cancel: true });
+    }
+    if (settings.blockAds &&
+        adEngine.shouldBlock(details.url, details.resourceType, documentUrlOf(details))) {
+      adsBlocked++;
       return callback({ cancel: true });
     }
     if (settings.httpsOnly && shouldUpgrade(details)) {
@@ -349,6 +357,14 @@ function applySettings() {
     syncWebAuthnPolicy(sess);
   });
   require('electron').webContents.getAllWebContents().forEach(applyWebRTCPolicy);
+
+  // Turning the switch on for the first time has to actually load the lists,
+  // rather than wait for the next launch.
+  if (settings.blockAds && !adEngine.ruleCount && !filtersBusy) {
+    setTimeout(() => {
+      if (!rebuildEngine()) updateFilters(true);
+    }, 0);
+  }
 }
 
 ipcMain.handle('settings-get', () => ({
@@ -596,6 +612,133 @@ ipcMain.handle('news-topics-set', (event, topics) => {
   refreshNews(true);
   return settings.newsTopics.slice();
 });
+
+// ---------- Ad blocking ----------
+// The engine itself is in adblock.js. This is the part that keeps the
+// filter lists on disk and current.
+
+const filtersDir = path.join(app.getPath('userData'), 'Filters');
+const FILTER_LISTS = [
+  { id: 'easylist', name: 'EasyList', url: 'https://easylist.to/easylist/easylist.txt' },
+  { id: 'easyprivacy', name: 'EasyPrivacy', url: 'https://easylist.to/easylist/easyprivacy.txt' }
+];
+const FILTER_MAX_AGE = 5 * 24 * 60 * 60 * 1000;
+const FILTER_MAX_BYTES = 24 * 1024 * 1024;
+
+let adEngine = new adblock.Engine();
+let adsBlocked = 0;
+let filtersUpdatedAt = 0;
+let filtersBusy = false;
+let filtersNote = 'Not loaded yet.';
+
+function filterFile(list) {
+  return path.join(filtersDir, list.id + '.txt');
+}
+
+// Built into a fresh engine and swapped in at the end, so a request arriving
+// mid-rebuild is never matched against a half-built set of rules.
+function rebuildEngine() {
+  const next = new adblock.Engine();
+  let oldest = 0;
+  let loaded = 0;
+
+  for (const list of FILTER_LISTS) {
+    try {
+      const file = filterFile(list);
+      const text = fs.readFileSync(file, 'utf8');
+      next.parseList(text);
+      loaded++;
+      const when = fs.statSync(file).mtimeMs;
+      if (!oldest || when < oldest) oldest = when;
+    } catch (err) {
+      // Not downloaded yet, or unreadable. The others still count.
+    }
+  }
+
+  adEngine = next;
+  filtersUpdatedAt = oldest;
+  filtersNote = loaded
+    ? next.ruleCount.toLocaleString() + ' rules from ' + loaded + ' list' + (loaded === 1 ? '' : 's')
+    : 'No filter lists downloaded yet.';
+  sendToAll('adblock-changed');
+  return loaded;
+}
+
+async function updateFilters(force) {
+  if (filtersBusy) return { ok: false, error: 'Already updating.' };
+  if (!force && filtersUpdatedAt && Date.now() - filtersUpdatedAt < FILTER_MAX_AGE) return { ok: true };
+
+  filtersBusy = true;
+  filtersNote = 'Downloading…';
+  sendToAll('adblock-changed');
+
+  let fetched = 0;
+  const failures = [];
+  try {
+    fs.mkdirSync(filtersDir, { recursive: true });
+    for (const list of FILTER_LISTS) {
+      try {
+        const response = await net.fetch(list.url);
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        const text = await response.text();
+        // A filter list that small is an error page, and writing it over a
+        // good list would quietly disable blocking.
+        if (text.length < 10000) throw new Error('the download looks empty');
+        if (text.length > FILTER_MAX_BYTES) throw new Error('the download is implausibly large');
+        fs.writeFileSync(filterFile(list), text);
+        fetched++;
+      } catch (err) {
+        failures.push(list.name + ': ' + err.message);
+      }
+    }
+  } finally {
+    filtersBusy = false;
+  }
+
+  rebuildEngine();
+  if (failures.length) {
+    filtersNote = filtersNote + ' — ' + failures.join('; ');
+    sendToAll('adblock-changed');
+  }
+  return { ok: fetched > 0, error: failures.join('; ') || undefined };
+}
+
+// Parsing the lists takes a few hundred milliseconds and blocks this
+// process while it runs, so it happens after the window is up rather than
+// in front of it.
+function startAdblock() {
+  if (!settings.blockAds) return;
+  setTimeout(() => {
+    const loaded = rebuildEngine();
+    if (!loaded) updateFilters(true);
+    else updateFilters(false);
+  }, 2500);
+  setInterval(() => { if (settings.blockAds) updateFilters(false); }, 12 * 60 * 60 * 1000);
+}
+
+// The page this request belongs to, which is what makes "third party" mean
+// anything. The referrer is preferred because reading it costs nothing.
+function documentUrlOf(details) {
+  if (details.referrer) return details.referrer;
+  try {
+    return details.webContents ? details.webContents.getURL() : '';
+  } catch (err) {
+    return '';
+  }
+}
+
+ipcMain.handle('adblock-status', () => ({
+  enabled: !!settings.blockAds,
+  busy: filtersBusy,
+  note: filtersNote,
+  rules: adEngine.ruleCount,
+  hiding: adEngine.cosmeticCount,
+  blocked: adsBlocked,
+  updatedAt: filtersUpdatedAt,
+  lists: FILTER_LISTS.map((l) => l.name)
+}));
+
+ipcMain.handle('adblock-update', () => updateFilters(true));
 
 // ---------- Extensions ----------
 // Electron loads unpacked Chrome extensions and runs their content scripts
@@ -1127,6 +1270,21 @@ ipcMain.handle('clipboard-write', (event, text) => {
 // carrying Node privileges.
 function hardenWebContents(contents) {
   applyWebRTCPolicy(contents);
+
+  // Blocking the request removes the ad but leaves the hole it sat in. These
+  // are the list authors' own rules for closing that hole, and only the ones
+  // written for this particular site -- the generic ones run to tens of
+  // thousands of selectors and are not worth what they would cost on every
+  // page.
+  contents.on('dom-ready', () => {
+    if (!settings.blockAds) return;
+    try {
+      const css = adEngine.hidingCssFor(contents.getURL());
+      if (css) contents.insertCSS(css).catch(() => {});
+    } catch (err) {
+      // The page went away mid-load.
+    }
+  });
 
   contents.on('will-attach-webview', (event, webPreferences, params) => {
     delete webPreferences.preload;
@@ -1666,6 +1824,7 @@ app.whenReady().then(() => {
   // After the window, so its session exists and the first paint is not
   // waiting on however many extensions are installed.
   loadAllExtensions();
+  startAdblock();
   setupAutoUpdate();
 
   app.on('activate', () => {

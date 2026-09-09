@@ -1154,3 +1154,6 @@ body.fullscreen .bookmarks { display: none; }
 
 .storerow { align-items: center; padding-top: 9px; }
 .storerow .set-input { margin-top: 0; max-width: 420px; }
+
+.adblock-row { padding-top: 2px; }
+.adblock-row .set-actions { padding-top: 10px; }
