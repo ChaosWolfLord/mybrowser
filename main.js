@@ -36,6 +36,11 @@ try {
 }
 app.setPath('userData', userDataDir);   // must happen before app is ready
 
+// The window icon. Windows reads the .ico; Chromium on Linux (where Aurora
+// runs under WSL) cannot load an .ico and logs a warning, so it gets the
+// PNG rendered from the same artwork.
+const appIcon = path.join(__dirname, process.platform === 'win32' ? 'icon.ico' : 'icon.png');
+
 const tabsFile = path.join(app.getPath('userData'), 'tabs.json');
 const historyFile = path.join(app.getPath('userData'), 'history.json');
 const settingsFile = path.join(app.getPath('userData'), 'settings.json');
@@ -937,16 +942,30 @@ function unpackCrx(crxFile, destDir) {
   const zipFile = path.join(app.getPath('temp'), 'aurora-ext-' + Date.now() + '.zip');
   fs.writeFileSync(zipFile, buf.subarray(zipStart));
 
+  // Unzip with whatever the platform already has, so there is no dependency
+  // to install. On Windows that is PowerShell's Expand-Archive; on Linux
+  // (where Aurora runs under WSL to get past Smart App Control) it is unzip.
+  const command = process.platform === 'win32'
+    ? {
+        exe: 'powershell',
+        args: ['-NoProfile', '-NonInteractive', '-Command',
+          'Expand-Archive -LiteralPath ' + JSON.stringify(zipFile) +
+          ' -DestinationPath ' + JSON.stringify(destDir) + ' -Force']
+      }
+    : { exe: 'unzip', args: ['-o', zipFile, '-d', destDir] };
+
   return new Promise((resolve, reject) => {
-    execFile('powershell', [
-      '-NoProfile', '-NonInteractive', '-Command',
-      'Expand-Archive -LiteralPath ' + JSON.stringify(zipFile) +
-      ' -DestinationPath ' + JSON.stringify(destDir) + ' -Force'
-    ], { windowsHide: true, timeout: 120000 }, (err, stdout, stderr) => {
-      try { fs.unlinkSync(zipFile); } catch (e) {}
-      if (err) return reject(new Error(String(stderr || err.message).trim()));
-      resolve();
-    });
+    execFile(command.exe, command.args, { windowsHide: true, timeout: 120000 },
+      (err, stdout, stderr) => {
+        try { fs.unlinkSync(zipFile); } catch (e) {}
+        if (err) {
+          if (err.code === 'ENOENT' && command.exe === 'unzip') {
+            return reject(new Error('unzip is not installed. Run: sudo apt install unzip'));
+          }
+          return reject(new Error(String(stderr || err.message).trim()));
+        }
+        resolve();
+      });
   });
 }
 
@@ -1371,7 +1390,7 @@ function hardenWebContents(contents) {
           width: 520,
           height: 640,
           minimizable: false,
-          icon: path.join(__dirname, 'icon.ico'),
+          icon: appIcon,
           webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true }
         }
       };
@@ -1399,7 +1418,7 @@ function createWindow(options) {
     minWidth: 900,
     minHeight: 600,
     backgroundColor: '#1E1B18',
-    icon: path.join(__dirname, 'icon.ico'),
+    icon: appIcon,
     // Painting only once the shell is ready removes the white flash and
     // the several hundred ms of empty window frame on startup.
     show: false,
