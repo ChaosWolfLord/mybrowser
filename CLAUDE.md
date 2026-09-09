@@ -437,7 +437,53 @@ in place.
   panel that was not on screen. Boot now skips it when collapsed and loads
   on open instead.
 
+## Running under WSL2 (because Smart App Control blocks the Windows build)
+
+As of 9 Sep 2026 SAC blocks the unsigned Electron binary from running on
+Windows at all, and SAC has no per-app allow-list. The user will not turn
+SAC off (one-way). The solution in use: **run Aurora as a Linux app inside
+WSL2**, which SAC does not gate, displayed on the Windows desktop via WSLg.
+
+Setup that exists on this machine:
+
+- Distro **Ubuntu-24.04**, user **aurora** (passwordless sudo). WSL 2.7.10
+  with WSLg 1.0.73 was already present; only a distro was missing.
+- The app is a fresh clone at **`/home/aurora/aurora-src`** (from GitHub, so
+  its own `updateFromGit` keeps it current). It is a *separate checkout*
+  from the Windows dev copy at `C:\Users\vihaa\Aurora`.
+- **Node must be 22**, via nvm (`~/.nvm`). The apt Node 18 cannot download
+  the Electron binary (`ERR_REQUIRE_ESM` in electron's postinstall). Even
+  under Node 22, npm's postinstall silently skipped the download once;
+  running `node node_modules/electron/install.js` directly fetched it.
+- `chrome-sandbox` must be `root:root` mode `4755`, or Chromium refuses to
+  start without `--no-sandbox`.
+- Launch env needs `DISPLAY=:0` (WSLg). `/home/aurora/aurora-run.sh` sets it
+  and execs `node_modules/electron/dist/electron` **directly** (not the
+  `.bin/electron` shim, which needs node on PATH — nvm's node is not there
+  for a non-login launch).
+- The Windows Start Menu / Desktop **Aurora** shortcut now runs
+  `wscript.exe C:\Users\vihaa\AppData\Local\Aurora\launch-wsl.vbs`, which
+  launches the WSL app hidden (no console flash). Both `wscript` and
+  `wsl.exe` are Windows-signed, so SAC allows the launcher itself.
+
+Verified running: Electron 44.1.1 comes up in ~2s, ~10 processes, sidebar
+loads real Google pages, stable uptime. GPU logs `dri3 not supported` and
+falls back — harmless. The `icon.ico` warning is cosmetic (Linux wants PNG).
+
+Known gaps in the Linux build, not yet fixed:
+
+- **The profile is fresh.** userData is `~/.config/Aurora` in Linux, so
+  Google sign-in, bookmarks, history and tabs all start empty. Chromium
+  encrypts cookies per-OS, so the Windows profile could not be copied over
+  even if wanted.
+- **`.crx` / Web Store extension install is broken on Linux.** `unpackCrx`
+  shells out to PowerShell `Expand-Archive`. Folder extensions still work.
+  Fix would be to use `unzip` when `process.platform !== 'win32'`.
+- The auto-updater's `npm install` step (on a manifest change) may not find
+  node on PATH under the launcher; `git pull` of JS still applies.
+
 ## Shipping a change
+
 
 **Smart App Control is enforced on this machine, and as of 9 Sep 2026 it
 blocks the app from running at all** -- not just from being packaged. It
