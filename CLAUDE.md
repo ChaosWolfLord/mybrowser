@@ -461,14 +461,33 @@ Setup that exists on this machine:
   and execs `node_modules/electron/dist/electron` **directly** (not the
   `.bin/electron` shim, which needs node on PATH — nvm's node is not there
   for a non-login launch).
-- The Windows Start Menu / Desktop **Aurora** shortcut now runs
-  `wscript.exe C:\Users\vihaa\AppData\Local\Aurora\launch-wsl.vbs`, which
-  launches the WSL app hidden (no console flash). Both `wscript` and
-  `wsl.exe` are Windows-signed, so SAC allows the launcher itself.
+- The Windows Start Menu / Desktop **Aurora** shortcut runs
+  `wscript.exe C:\Users\vihaa\AuroraWSL\launch.vbs`, which launches the WSL
+  app hidden (no console). Both `wscript` and `wsl.exe` are Windows-signed,
+  so SAC allows the launcher itself.
+- **The launcher must NOT live under `AppData`.** This sandbox redirects
+  `AppData` writes into a private container mirror, so a `.vbs` written there
+  exists for the agent but not for the real user's click ("Can not find
+  script file"). Real vs mirrored was settled by reading a path back through
+  WSL (`/mnt/c/...` sees the true disk): profile root is real, `AppData` is
+  mirrored. The launcher lives at `C:\Users\vihaa\AuroraWSL\`.
+- **The launch must stay attached, not detach.** A `setsid ... &` that
+  returns immediately gets killed when WSL tears down the one-shot session,
+  so the window never appears. `aurora-run.sh` execs electron in the
+  foreground; the `.vbs` (`Run` window mode 0) hides the console.
 
-Verified running: Electron 44.1.1 comes up in ~2s, ~10 processes, sidebar
-loads real Google pages, stable uptime. GPU logs `dri3 not supported` and
-falls back — harmless. The `icon.ico` warning is cosmetic (Linux wants PNG).
+**WSLg cannot project Chromium's GPU/dmabuf buffers**, so with hardware GL
+the window is created correctly (right size, title "Aurora" — confirmed via
+`xwininfo`) but shows on the Windows side as a blank placeholder with a
+penguin icon and a "copy mode" title. Fix is software rendering:
+`aurora-run.sh` sets `LIBGL_ALWAYS_SOFTWARE=1` and passes `--disable-gpu
+--disable-gpu-compositing --in-process-gpu`. With those it renders and
+projects correctly — verified by capturing the window id with ImageMagick
+`import -window <id>` (`import -window root` fails; WSLg is rootless).
+
+The `.ico` window-icon warning is fixed (icon.png + a platform `appIcon`).
+The default app menu is removed with `Menu.setApplicationMenu(null)`, or it
+shows as a real menu bar above the toolbar on Linux.
 
 Known gaps in the Linux build, not yet fixed:
 
@@ -476,9 +495,6 @@ Known gaps in the Linux build, not yet fixed:
   Google sign-in, bookmarks, history and tabs all start empty. Chromium
   encrypts cookies per-OS, so the Windows profile could not be copied over
   even if wanted.
-- **`.crx` / Web Store extension install is broken on Linux.** `unpackCrx`
-  shells out to PowerShell `Expand-Archive`. Folder extensions still work.
-  Fix would be to use `unzip` when `process.platform !== 'win32'`.
 - The auto-updater's `npm install` step (on a manifest change) may not find
   node on PATH under the launcher; `git pull` of JS still applies.
 

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, session, ipcMain, clipboard, shell, dialog, net } = require('electron');
+const { app, BrowserWindow, session, ipcMain, clipboard, shell, dialog, net, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
@@ -1831,6 +1831,11 @@ app.on('certificate-error', (event, webContents, url, error, certificate, callba
 
 app.whenReady().then(() => {
   if (process.platform === 'win32') app.setAppUserModelId('com.chaoswolflord.aurora');
+  // The browser draws its own toolbar, so the default File/Edit/View/Window
+  // menu bar is dead weight -- and on Linux (under WSL) it shows as a real
+  // menu bar stacked above that toolbar. Shortcuts are handled separately,
+  // through before-input-event, so nothing depends on this menu.
+  Menu.setApplicationMenu(null);
   loadSettings();
   loadExtensionRegistry();
   loadBookmarks();
