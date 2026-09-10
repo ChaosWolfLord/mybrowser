@@ -5,6 +5,23 @@ const { execFile } = require('child_process');
 const { autoUpdater } = require('electron-updater');
 const adblock = require('./adblock');
 
+// One instance only. Under WSL the app is launched by clicking a shortcut,
+// and without this every click spawned another whole browser -- a pile of
+// windows, and under WSLg's window projection the extra ones show up stuck
+// and unopenable. A second launch now just brings the existing window
+// forward instead.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    const win = mainWindow || windows.values().next().value;
+    if (!win) return;
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+  });
+}
+
 // Built from the Chromium actually inside this Electron, never hardcoded.
 // Google serves Gmail and Calendar a stripped-down legacy interface to any
 // browser it considers out of date, and a pinned version string silently
@@ -1449,7 +1466,12 @@ function createWindow(options) {
     if (mainWindow === win) mainWindow = windows.values().next().value || null;
   });
 
-  win.once('ready-to-show', () => win.show());
+  win.once('ready-to-show', () => {
+    win.show();
+    // WSLg's window projection sometimes brings a freshly shown window up
+    // minimised; asking for focus makes it settle in the foreground.
+    win.focus();
+  });
   win.loadFile('index.html');
 
   // Ordinary windows all share persist:main, which is why one Google
