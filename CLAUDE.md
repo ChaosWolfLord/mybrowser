@@ -476,18 +476,36 @@ Setup that exists on this machine:
   so the window never appears. `aurora-run.sh` execs electron in the
   foreground; the `.vbs` (`Run` window mode 0) hides the console.
 
-**WSLg cannot project Chromium's GPU/dmabuf buffers**, so with hardware GL
+**WSLg cannot project Chromium's GPU-composited surface** (it presents via
+GL/dmabuf, which weston can't copy over its RDP link), so with default GPU
 the window is created correctly (right size, title "Aurora" — confirmed via
 `xwininfo`) but shows on the Windows side as a blank placeholder with a
-penguin icon and a "copy mode" title. Fix is software rendering:
-`aurora-run.sh` sets `LIBGL_ALWAYS_SOFTWARE=1` and passes `--disable-gpu
---disable-gpu-compositing --in-process-gpu`. With those it renders and
-projects correctly — verified by capturing the window id with ImageMagick
-`import -window <id>` (`import -window root` fails; WSLg is rootless).
+penguin icon and a "copy mode" title.
+
+The fix is `--disable-gpu-compositing` **only** — it moves the final
+composite to a software (SHM) surface WSLg can copy, while GPU rasterization
+stays on. An earlier fix used the sledgehammer `LIBGL_ALWAYS_SOFTWARE=1
+--disable-gpu`, which also worked but made every page render in software and
+was visibly slow; `--disable-gpu-compositing` alone renders *and* keeps GPU
+speed (verified the window still paints via `import -window <id>`, and the
+log shows no swiftshader/software-renderer fallback). `import -window root`
+fails — WSLg is rootless; capture a specific window id.
 
 The `.ico` window-icon warning is fixed (icon.png + a platform `appIcon`).
 The default app menu is removed with `Menu.setApplicationMenu(null)`, or it
-shows as a real menu bar above the toolbar on Linux.
+shows as a real menu bar above the toolbar on Linux. The window is
+`frame: false`: WSLg draws a light title bar that can't be themed, so the
+browser wears its own toolbar (already a drag region) plus min/max/close
+buttons over a `window-control` IPC.
+
+**Taskbar icon (unresolved as of this writing).** The window carries an
+`_NET_WM_ICON` (Electron sets it from icon.png) and there is an
+`aurora.desktop` (in both `~/.local/share/applications` and
+`/usr/share/applications`) with `StartupWMClass=aurora` and a themed
+`Icon=aurora` under `hicolor/*/apps/aurora.png` — yet WSLg still showed the
+default penguin. `NoDisplay=true` was removed on the theory WSLg skips
+hidden entries for association; not yet confirmed. This is cosmetic and
+could not be verified from the agent side (no view of the Windows taskbar).
 
 Known gaps in the Linux build, not yet fixed:
 
