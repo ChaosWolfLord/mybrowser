@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('tabStore', {
   },
   clipboardWrite: (text) => ipcRenderer.invoke('clipboard-write', text),
   setWindowFullscreen: (on) => ipcRenderer.invoke('window-fullscreen', on),
+  windowControl: (action) => ipcRenderer.invoke('window-control', action),
   newWindow: (isPrivate) => ipcRenderer.invoke('new-window', { private: !!isPrivate }),
   windowInfo: () => ipcRenderer.invoke('window-info'),
   extensions: {

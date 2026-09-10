@@ -512,6 +512,12 @@ reloadBtn.addEventListener('click', () => {
 
 document.getElementById('new-tab-btn').addEventListener('click', () => createTab());
 
+// Window buttons, since the window is frameless.
+const winControl = (action) => window.tabStore?.windowControl?.(action);
+document.getElementById('win-min').addEventListener('click', () => winControl('minimize'));
+document.getElementById('win-max').addEventListener('click', () => winControl('maximize'));
+document.getElementById('win-close').addEventListener('click', () => winControl('close'));
+
 // Anything that asked for a new window and wasn't allowed to open one (see
 // POPUP_ALLOWLIST in main.js) arrives here instead and becomes a tab.
 window.tabStore?.onOpenUrl?.((url) => createTab(url));

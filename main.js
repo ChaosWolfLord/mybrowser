@@ -1268,6 +1268,17 @@ ipcMain.handle('window-fullscreen', (event, on) => {
   if (win) win.setFullScreen(!!on);
 });
 
+// The window is frameless (no OS title bar), so the minimise / maximise /
+// close buttons in the toolbar are the only way to drive it. Each acts on
+// the window the click came from.
+ipcMain.handle('window-control', (event, action) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) return;
+  if (action === 'minimize') win.minimize();
+  else if (action === 'close') win.close();
+  else if (action === 'maximize') win.isMaximized() ? win.unmaximize() : win.maximize();
+});
+
 // ---------- Right-click menu ----------
 // The menu is drawn by the renderer in the browser's own styling. Electron
 // pops a native Windows menu, which is grey and square and looks like it
@@ -1436,6 +1447,10 @@ function createWindow(options) {
     minHeight: 600,
     backgroundColor: '#1E1B18',
     icon: appIcon,
+    // No OS title bar. The toolbar is already a drag region, so the window
+    // is moved by it and driven by the min/max/close buttons the renderer
+    // draws. This is also what gets rid of the light title bar WSLg draws.
+    frame: false,
     // Painting only once the shell is ready removes the white flash and
     // the several hundred ms of empty window frame on startup.
     show: false,
