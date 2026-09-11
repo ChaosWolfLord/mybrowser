@@ -499,10 +499,16 @@ renders in software, *slow*. `--disable-gpu-compositing` alone → visible and
 page-load fast, but **scrolling** janky, because compositing (which drives
 scroll) was on the CPU; obvious on the new tab page, whose aurora background
 uses heavy blur. Native Wayland → weston composites on the GPU, smooth.
-Caveats: WSL exposes no DRM render node, so Chromium's own GL is software and
-**WebGL is blocklisted** (`--ignore-gpu-blocklist` / swiftshader if a page
-needs it); and a Wayland window is not an X window, so `xwininfo`/`import`
-can't see or screenshot it — verify via `/mnt/wslg/weston.log` and the user.
+Caveat: WSL exposes no DRM render node, so Chromium's own GL is software.
+WebGL is therefore off by default; `aurora-run.sh` re-enables it with
+`--enable-unsafe-swiftshader --ignore-gpu-blocklist`, which lets it fall back
+to Mesa's llvmpipe (software GL, verified: a WebGL context comes up). This
+matters beyond 3D pages: a browser advertising **no** WebGL reads as a
+headless bot, which is a likely trigger for Google's "this browser is not
+secure" sign-in block — Chromium itself is current (152), so version is not
+the cause. Also note a Wayland window is not an X window, so
+`xwininfo`/`import` can't see or screenshot it — verify via
+`/mnt/wslg/weston.log` and the user.
 
 Related new-tab fix: `backdrop-filter: blur()` was removed from the search
 box and app tiles (commit 88796ff). Re-blurring the moving background every
