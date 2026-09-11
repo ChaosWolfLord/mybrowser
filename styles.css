@@ -515,32 +515,112 @@ body.private .chrome {
 
 /* ---------- Settings ---------- */
 
-.set-section {
-  color: #9C948A;
-  font-size: 10.5px;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  margin: 22px 0 4px 10px;
+.set-wrap {
+  max-width: 660px;
+  margin: 0 auto;
+  padding: 4px 4px 44px 4px;
 }
-.set-section:first-child { margin-top: 6px; }
+
+/* The banner across the top: what the browser has done for you this session. */
+.set-summary {
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  padding: 22px 26px;
+  margin-bottom: 20px;
+  background: linear-gradient(180deg, rgba(201,138,62,0.10), rgba(201,138,62,0.02));
+  border: 1px solid rgba(201,138,62,0.22);
+}
+.set-summary-glow {
+  position: absolute;
+  top: -70%;
+  right: -8%;
+  width: 320px;
+  height: 320px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(201,138,62,0.20), rgba(201,138,62,0) 70%);
+  pointer-events: none;
+}
+.set-summary-row { position: relative; display: flex; gap: 34px; }
+.set-stat { min-width: 0; }
+.set-stat-num {
+  font-size: 31px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: #FBF4E9;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+.set-stat-label {
+  margin-top: 4px;
+  font-size: 10.5px;
+  color: #A79C8F;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.set-summary-note {
+  position: relative;
+  margin-top: 15px;
+  font-size: 11px;
+  color: #8D847A;
+}
+
+/* A titled card holding one section's rows. */
+.set-card {
+  border-radius: 14px;
+  background: rgba(237,228,216,0.028);
+  border: 1px solid rgba(237,228,216,0.08);
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+.set-card-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 15px 18px 12px 18px;
+}
+.set-badge {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #C98A3E;
+  background: rgba(201,138,62,0.14);
+}
+.set-badge svg { width: 17px; height: 17px; }
+.set-card-title {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #EDE4D8;
+}
+.set-card-body { padding: 0 8px 8px 8px; }
+/* Hairline dividers between rows, whatever kind of row they are. */
+.set-card-body > * { border-top: 1px solid rgba(237,228,216,0.055); }
+.set-card-body > *:first-child { border-top: none; }
 
 .set-row {
   display: flex;
   align-items: flex-start;
-  gap: 14px;
-  padding: 11px 10px;
-  border-radius: 8px;
+  gap: 16px;
+  padding: 14px 12px;
 }
-.set-row:hover { background: rgba(237,228,216,0.04); }
 .set-main { flex: 1; min-width: 0; }
-.set-label { color: #EDE4D8; font-size: 13px; }
+.set-label { color: #EDE4D8; font-size: 13px; font-weight: 500; }
 .set-hint {
-  color: #6E6862;
+  color: #8D847A;
   font-size: 11.5px;
-  line-height: 1.5;
-  margin-top: 3px;
+  line-height: 1.55;
+  margin-top: 4px;
+  max-width: 48ch;
 }
 .set-hint b { color: #C98A3E; font-weight: 600; }
+.set-card-body > .set-actions { padding: 14px 12px; margin: 0; }
+.set-card-body > .set-extensions { padding: 6px 4px; }
+.set-card-body > .adblock-row { padding-bottom: 4px; }
 
 /* The switch. Deliberately a button so it is focusable and keyboard-usable
    rather than a div that only responds to a mouse. */

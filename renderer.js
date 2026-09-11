@@ -1028,7 +1028,7 @@ function whenAgo(ms) {
 
 async function refreshAdblockStatus() {
   const el = document.getElementById('adblock-status');
-  if (!el || !window.tabStore.adblock) return;
+  if (!window.tabStore.adblock) return;
   let s;
   try {
     s = await window.tabStore.adblock.status();
@@ -1036,6 +1036,15 @@ async function refreshAdblockStatus() {
     return;
   }
 
+  // The summary tiles at the top of the page draw their ad numbers from here.
+  const setStat = (id, value) => {
+    const node = document.getElementById(id);
+    if (node) node.textContent = value;
+  };
+  setStat('stat-ads', s.enabled ? (s.blocked || 0).toLocaleString() : 'off');
+  setStat('stat-rules', s.rules ? s.rules.toLocaleString() : '—');
+
+  if (!el) return;
   if (!s.enabled) {
     el.textContent = 'Off. The filter lists stay on disk, so turning it back on is instant.';
     return;
@@ -1179,38 +1188,98 @@ async function renderSettings() {
   }
 
   settingsList.innerHTML = '';
+  const wrap = document.createElement('div');
+  wrap.className = 'set-wrap';
+  settingsList.appendChild(wrap);
+
+  wrap.appendChild(settingsSummary(state));
+
   SETTINGS_SECTIONS.forEach((section) => {
-    const head = document.createElement('div');
-    head.className = 'set-section';
-    head.textContent = section.title;
-    settingsList.appendChild(head);
-    section.items.forEach((item) => {
-      let row;
-      if (item.type === 'adblock') row = adblockRow();
-      else if (item.type === 'topics') row = topicsRow();
-      else if (item.type === 'extensions') row = extensionsRow();
-      else row = settingsRow(item, state.values);
-      settingsList.appendChild(row);
-    });
+    wrap.appendChild(sectionCard(section.title, section.items.map((item) => {
+      if (item.type === 'adblock') return adblockRow();
+      if (item.type === 'topics') return topicsRow();
+      if (item.type === 'extensions') return extensionsRow();
+      return settingsRow(item, state.values);
+    })));
   });
+
+  // The one-off "clear data" section, given the same card treatment.
+  wrap.appendChild(sectionCard('Clear data now', [dataActions()]));
 
   renderExtensionSettings();
   refreshAdblockStatus();
+}
+
+// Line icons, one per section, drawn in the accent colour. viewBox 24.
+const SECTION_ICONS = {
+  'Blocking': '<path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/>',
+  'Connection': '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/>',
+  'What sites may ask for': '<path d="M6 8a6 6 0 0112 0c0 5 2 6 2 6H4s2-1 2-6z"/><path d="M10 20a2 2 0 004 0"/>',
+  'Appearance': '<circle cx="8" cy="8" r="2.3"/><line x1="10.3" y1="8" x2="20" y2="8"/><line x1="4" y1="8" x2="5.7" y2="8"/><circle cx="15" cy="16" r="2.3"/><line x1="4" y1="16" x2="12.7" y2="16"/><line x1="17.3" y1="16" x2="20" y2="16"/>',
+  'Extensions': '<path d="M10 4a1.5 1.5 0 013 0v1.5H15A1 1 0 0116 6.5V9h1.5a1.5 1.5 0 010 3H16v3.5a1 1 0 01-1 1h-3V17a1.5 1.5 0 00-3 0v-.5H5.5a1 1 0 01-1-1V12H6a1.5 1.5 0 000-3H4.5V6.5a1 1 0 011-1H10z"/>',
+  'New tab page': '<rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/>',
+  'On exit': '<path d="M12 4v8"/><path d="M7.5 7a7 7 0 109 0"/>',
+  'Clear data now': '<path d="M4 7h16"/><path d="M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2"/><path d="M6.5 7l.9 12a1 1 0 001 1h7.2a1 1 0 001-1l.9-12"/>'
+};
+
+function sectionIcon(title) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.7');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.innerHTML = SECTION_ICONS[title] || '<circle cx="12" cy="12" r="8"/>';
+  return svg;
+}
+
+// A titled card: an icon-badged header, then the rows.
+function sectionCard(title, rows) {
+  const card = document.createElement('section');
+  card.className = 'set-card';
 
   const head = document.createElement('div');
-  head.className = 'set-section';
-  head.textContent = 'Clear data now';
-  settingsList.appendChild(head);
-  settingsList.appendChild(dataActions());
+  head.className = 'set-card-head';
 
-  if (state.blocked > 0) {
-    const tally = document.createElement('div');
-    tally.className = 'set-hint';
-    tally.style.padding = '14px 10px 4px 10px';
-    tally.innerHTML = 'Blocked <b>' + state.blocked +
-      '</b> tracking requests since this browser started.';
-    settingsList.appendChild(tally);
-  }
+  const badge = document.createElement('span');
+  badge.className = 'set-badge';
+  badge.appendChild(sectionIcon(title));
+  head.appendChild(badge);
+
+  const heading = document.createElement('h2');
+  heading.className = 'set-card-title';
+  heading.textContent = title;
+  head.appendChild(heading);
+
+  card.appendChild(head);
+
+  const body = document.createElement('div');
+  body.className = 'set-card-body';
+  rows.forEach((r) => body.appendChild(r));
+  card.appendChild(body);
+  return card;
+}
+
+// The banner at the top: what the browser has done for you this session.
+function settingsSummary(state) {
+  const el = document.createElement('div');
+  el.className = 'set-summary';
+  el.id = 'set-summary';
+
+  const blocked = state.blocked || 0;
+  el.innerHTML =
+    '<div class="set-summary-glow"></div>' +
+    '<div class="set-summary-row">' +
+      '<div class="set-stat"><div class="set-stat-num" id="stat-trackers">' + blocked.toLocaleString() + '</div>' +
+        '<div class="set-stat-label">trackers blocked</div></div>' +
+      '<div class="set-stat"><div class="set-stat-num" id="stat-ads">—</div>' +
+        '<div class="set-stat-label">ads blocked</div></div>' +
+      '<div class="set-stat"><div class="set-stat-num" id="stat-rules">—</div>' +
+        '<div class="set-stat-label">filter rules</div></div>' +
+    '</div>' +
+    '<div class="set-summary-note">since this browser started</div>';
+  return el;
 }
 
 function openSettings() {
