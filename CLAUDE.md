@@ -462,9 +462,14 @@ Setup that exists on this machine:
   `.bin/electron` shim, which needs node on PATH — nvm's node is not there
   for a non-login launch).
 - The Windows Start Menu / Desktop **Aurora** shortcut runs
-  `wscript.exe C:\Users\vihaa\AuroraWSL\launch.vbs`, which launches the WSL
-  app hidden (no console). Both `wscript` and `wsl.exe` are Windows-signed,
-  so SAC allows the launcher itself.
+  `"C:\Program Files\WSL\wslg.exe" -d Ubuntu-24.04 -u aurora --cd "~" --
+  /home/aurora/aurora-run.sh` — the same way WSLg's own auto-generated
+  "Aurora (Ubuntu-24.04)" entry launches it. `wslg.exe` is windowless (no
+  console, so no `.vbs` wrapper) **and** it makes WSLg associate the window
+  with the app, which is what gets the real icon instead of a bare penguin
+  (see below). An earlier launcher used `wscript.exe` + a `.vbs` calling raw
+  `wsl.exe`; that worked but WSLg never associated the window, so the taskbar
+  showed a generic penguin.
 - **The launcher must NOT live under `AppData`.** This sandbox redirects
   `AppData` writes into a private container mirror, so a `.vbs` written there
   exists for the agent but not for the real user's click ("Can not find
@@ -482,14 +487,27 @@ the window is created correctly (right size, title "Aurora" — confirmed via
 `xwininfo`) but shows on the Windows side as a blank placeholder with a
 penguin icon and a "copy mode" title.
 
-The fix is `--disable-gpu-compositing` **only** — it moves the final
-composite to a software (SHM) surface WSLg can copy, while GPU rasterization
-stays on. An earlier fix used the sledgehammer `LIBGL_ALWAYS_SOFTWARE=1
---disable-gpu`, which also worked but made every page render in software and
-was visibly slow; `--disable-gpu-compositing` alone renders *and* keeps GPU
-speed (verified the window still paints via `import -window <id>`, and the
-log shows no swiftshader/software-renderer fallback). `import -window root`
-fails — WSLg is rootless; capture a specific window id.
+The fix that stuck is **native Wayland**: `aurora-run.sh` passes
+`--enable-features=UseOzonePlatform --ozone-platform=wayland --class=aurora`.
+As a Wayland client the window is composited by weston directly (GPU, host
+side) instead of going through the Xwayland → software-copy path, so
+scrolling is smooth and the window shows. It also fixes input feel.
+
+The road here, so nobody re-walks it: default GPU on X11 → blank ("copy
+mode"). `LIBGL_ALWAYS_SOFTWARE=1 --disable-gpu` → visible but every page
+renders in software, *slow*. `--disable-gpu-compositing` alone → visible and
+page-load fast, but **scrolling** janky, because compositing (which drives
+scroll) was on the CPU; obvious on the new tab page, whose aurora background
+uses heavy blur. Native Wayland → weston composites on the GPU, smooth.
+Caveats: WSL exposes no DRM render node, so Chromium's own GL is software and
+**WebGL is blocklisted** (`--ignore-gpu-blocklist` / swiftshader if a page
+needs it); and a Wayland window is not an X window, so `xwininfo`/`import`
+can't see or screenshot it — verify via `/mnt/wslg/weston.log` and the user.
+
+Related new-tab fix: `backdrop-filter: blur()` was removed from the search
+box and app tiles (commit 88796ff). Re-blurring the moving background every
+scroll frame with no GPU raster was the jank; plain translucent fills over
+the already-90px-blurred aurora look the same.
 
 The `.ico` window-icon warning is fixed (icon.png + a platform `appIcon`).
 The default app menu is removed with `Menu.setApplicationMenu(null)`, or it
@@ -498,14 +516,18 @@ shows as a real menu bar above the toolbar on Linux. The window is
 browser wears its own toolbar (already a drag region) plus min/max/close
 buttons over a `window-control` IPC.
 
-**Taskbar icon (unresolved as of this writing).** The window carries an
-`_NET_WM_ICON` (Electron sets it from icon.png) and there is an
-`aurora.desktop` (in both `~/.local/share/applications` and
-`/usr/share/applications`) with `StartupWMClass=aurora` and a themed
-`Icon=aurora` under `hicolor/*/apps/aurora.png` — yet WSLg still showed the
-default penguin. `NoDisplay=true` was removed on the theory WSLg skips
-hidden entries for association; not yet confirmed. This is cosmetic and
-could not be verified from the agent side (no view of the Windows taskbar).
+**Taskbar icon — as good as WSL allows.** The plain penguin came from
+launching via raw `wsl.exe`, which WSLg never associates with the app. The
+real icon needs three things together: a themed icon (`Icon=aurora`,
+`aurora.png` under `hicolor/*/apps` in **both** `~/.local/share/icons` and
+`/usr/share/icons` + `gtk-update-icon-cache`), an `aurora.desktop`
+(`StartupWMClass=aurora`, no `NoDisplay`) in `/usr/share/applications`, and
+**launching via `wslg.exe`** so WSLg does the association. With all that,
+WSLg generates its own `WSLDVCPlugin/.../aurora.ico` and the taskbar shows
+the Aurora orb — **but WSLg composites a small Tux penguin badge onto the
+corner of every Linux app icon, and there is no toggle for it.** So orb-plus-
+badge is the ceiling; a fully penguin-free icon is not achievable under WSL.
+Confirmed by converting that generated `.ico`: our orb with a Tux corner.
 
 Known gaps in the Linux build, not yet fixed:
 
