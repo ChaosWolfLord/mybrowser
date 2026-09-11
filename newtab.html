@@ -98,11 +98,14 @@
     display: flex;
     margin-bottom: 36px;
   }
-  /* Frosted rather than solid, so the colour behind reads through. */
+  /* Slightly translucent so the colour behind still reads through. This
+     used to be backdrop-filter: blur(16px), but re-blurring the moving
+     background on every scroll frame is brutal without GPU rasterisation
+     (which WSL does not provide), so it is a plain fill now -- the aurora
+     behind is already blurred 90px, so the panel looks all but identical. */
   input[type="text"] {
     flex: 1;
-    background: rgba(30,26,23,0.55);
-    backdrop-filter: blur(16px);
+    background: rgba(28,24,21,0.82);
     border: 1px solid rgba(237,228,216,0.14);
     color: #EDE4D8;
     font-size: 15px;
@@ -132,8 +135,7 @@
     text-decoration: none;
     color: #EDE4D8;
     font-size: 13px;
-    background: rgba(30,26,23,0.5);
-    backdrop-filter: blur(16px);
+    background: rgba(28,24,21,0.8);
     border: 1px solid rgba(237,228,216,0.1);
     width: 84px;
     box-shadow: 0 6px 20px rgba(0,0,0,0.28);
