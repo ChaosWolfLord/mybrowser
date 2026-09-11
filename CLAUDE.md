@@ -561,8 +561,23 @@ Known gaps in the Linux build, not yet fixed:
 ## Shipping a change
 
 
+**UPDATE 10 Sep 2026: SAC now allows the native Windows build again**, even
+though it is still enforced (`VerifiedAndReputablePolicyState = 1`) and the
+electron.exe is still unsigned. SAC's verdict is cloud reputation, and
+electron.exe is an extremely common binary, so Microsoft's ISG appears to
+have caught up and now trusts this hash. Verified: native launch opens the
+"Aurora" window on repeated cold clicks, with real-GPU WebGL
+(`ANGLE (Intel ... Direct3D11)`) and smooth scrolling. **The shortcuts point
+back at the native build** (`node_modules\electron\dist\electron.exe`), which
+is strictly better than WSL — real GPU, no penguin, the original
+`%APPDATA%\Aurora` profile. The entire WSL setup below is kept as a **dormant
+fallback** in case SAC's verdict flips again; if native launch ever breaks,
+repoint the shortcuts to `wslg.exe` (see the WSL section) and it still works.
+
+The history, for context:
+
 **Smart App Control is enforced on this machine, and as of 9 Sep 2026 it
-blocks the app from running at all** -- not just from being packaged. It
+blocked the app from running at all** -- not just from being packaged. It
 had blocked installer builds for a while (truncating a 1.0.1 build to 188KB
 mid-write); running from source still worked. It no longer does:
 
