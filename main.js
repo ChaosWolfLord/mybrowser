@@ -30,9 +30,22 @@ if (!app.requestSingleInstanceLock()) {
 // an old Gmail. Claiming a version the engine cannot back would be worse
 // than claiming an old one, so this tracks the engine.
 const CHROME_MAJOR = process.versions.chrome.split('.')[0];
+const CHROME_FULL = process.versions.chrome;   // e.g. 152.0.7977.65
 const CHROME_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/' + CHROME_MAJOR + '.0.0.0 Safari/537.36';
+
+// User-Agent Client Hints. Electron reports only "Chromium" here; real Chrome
+// also lists a "Google Chrome" brand, and Google's sign-in flags a browser
+// that claims Chrome in its UA string but lacks that brand as "not secure".
+// These strings add it back, so the hints match the UA above. The greased
+// brand ("Not_A Brand") is part of the real format and is kept.
+const SEC_CH_UA =
+  '"Not_A Brand";v="24", "Chromium";v="' + CHROME_MAJOR +
+  '", "Google Chrome";v="' + CHROME_MAJOR + '"';
+const SEC_CH_UA_FULL =
+  '"Not_A Brand";v="24.0.0.0", "Chromium";v="' + CHROME_FULL +
+  '", "Google Chrome";v="' + CHROME_FULL + '"';
 
 // Where history, bookmarks, settings, saved tabs and every cookie live.
 // Electron derives this from the app name, so renaming the app to Aurora
@@ -200,10 +213,25 @@ function syncWebAuthnPolicy(sess) {
   }
 }
 
+const CLIENT_HINTS_ID = 'client-hints';
+const clientHintsPath = path.join(__dirname, 'client-hints.js');
+
+// Always on: makes navigator.userAgentData report the "Google Chrome" brand,
+// so pages that read it (Google's sign-in first among them) see real Chrome.
+function syncClientHints(sess) {
+  try {
+    if (sess.getPreloadScripts().some((s) => s.id === CLIENT_HINTS_ID)) return;
+    sess.registerPreloadScript({ type: 'frame', id: CLIENT_HINTS_ID, filePath: clientHintsPath });
+  } catch (err) {
+    // An Electron without the preload-script API: nothing to do.
+  }
+}
+
 function applyNetworkPolicy(sess) {
   syncRequestHandler(sess);
   syncHeaderHandler(sess);
   syncWebAuthnPolicy(sess);
+  syncClientHints(sess);
 
   sess.setPermissionRequestHandler((webContents, permission, callback) => {
     callback(permissionAllowed(permission));
@@ -363,11 +391,19 @@ function syncRequestHandler(sess) {
 }
 
 function syncHeaderHandler(sess) {
-  const wanted = settings.sendDoNotTrack || settings.trimReferrer;
-  if (!wanted) return sess.webRequest.onBeforeSendHeaders(null);
-
+  // Always on: the Client Hints fix below has to run regardless of the
+  // privacy toggles, or Google's sign-in sees a non-Chrome browser.
   sess.webRequest.onBeforeSendHeaders({ urls: ['<all_urls>'] }, (details, callback) => {
     const headers = details.requestHeaders;
+
+    // Rewrite the brand hints to include "Google Chrome" wherever Chromium
+    // already sends them (it decides per-request whether to). Case-insensitive
+    // because the header casing is not ours to assume.
+    for (const key of Object.keys(headers)) {
+      const lower = key.toLowerCase();
+      if (lower === 'sec-ch-ua') headers[key] = SEC_CH_UA;
+      else if (lower === 'sec-ch-ua-full-version-list') headers[key] = SEC_CH_UA_FULL;
+    }
 
     if (settings.sendDoNotTrack) {
       headers.DNT = '1';
