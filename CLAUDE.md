@@ -499,15 +499,29 @@ renders in software, *slow*. `--disable-gpu-compositing` alone → visible and
 page-load fast, but **scrolling** janky, because compositing (which drives
 scroll) was on the CPU; obvious on the new tab page, whose aurora background
 uses heavy blur. Native Wayland → weston composites on the GPU, smooth.
-Caveat: WSL exposes no DRM render node, so Chromium's own GL is software.
-WebGL is therefore off by default; `aurora-run.sh` re-enables it with
-`--enable-unsafe-swiftshader --ignore-gpu-blocklist`, which lets it fall back
-to Mesa's llvmpipe (software GL, verified: a WebGL context comes up). This
-matters beyond 3D pages: a browser advertising **no** WebGL reads as a
-headless bot, which is a likely trigger for Google's "this browser is not
-secure" sign-in block — Chromium itself is current (152), so version is not
-the cause. Also note a Wayland window is not an X window, so
-`xwininfo`/`import` can't see or screenshot it — verify via
+**WebGL and Wayland are mutually exclusive here — do not try to force it.**
+WSL exposes no DRM render node, so Chromium's own GL is software and WebGL is
+blocklisted. Enabling it (`--enable-unsafe-swiftshader`, `--use-angle=gl`,
+even `--disable-features=Vulkan`) makes Chromium's GPU process attempt
+Vulkan, and `--ozone-platform=wayland` logs *"not compatible with Vulkan"*
+and the window never paints — the app "runs" (procs up, weston registers the
+app_id) but shows nothing. This exact mistake shipped once and made the app
+"not open"; a WebGL context does come up in a **headless** test, which is
+what made it look safe. A visible Wayland window cannot be screenshotted
+(`xwininfo`/`import` see no X window), so the only proof of rendering is the
+user — never ship a render-affecting flag change unverified. So: keep the
+plain Wayland flags (`--enable-features=UseOzonePlatform --ozone-platform=
+wayland --class=aurora`), no WebGL. The only way to get WebGL is X11 mode
+(`--ozone-platform=x11 --disable-gpu-compositing`), which is Vulkan-
+compatible and screenshot-verifiable but brings back janky scrolling — a
+trade to offer the user, not to pick for them.
+
+A separate note that stands: a browser advertising no WebGL can read as a
+headless bot to Google's "this browser is not secure" sign-in check, but
+Chromium is current (152) so version is not the cause, and WebGL cannot be
+turned on without breaking the window, so that lever is not available under
+Wayland. A Wayland window is not an X window, so `xwininfo`/`import` can't
+see or screenshot it — verify via
 `/mnt/wslg/weston.log` and the user.
 
 Related new-tab fix: `backdrop-filter: blur()` was removed from the search
