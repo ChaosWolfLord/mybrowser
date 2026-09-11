@@ -144,6 +144,21 @@ function isTracker(url) {
   return verdict;
 }
 
+// Google's sign-in runs integrity checks and pulls in a lot of scripts; if
+// tracker- or ad-blocking cancels even one of them the page half-loads and
+// Google tells you to "turn on JavaScript" (JavaScript is on -- a script it
+// needed just did not arrive). So nothing on the sign-in flow is filtered:
+// neither the page itself nor anything it loads.
+const SIGNIN_HOSTS = [
+  'accounts.google.com', 'accounts.youtube.com', 'accounts.gstatic.com',
+  'signin.google.com', 'gds.google.com'
+];
+function isSignInHost(url) {
+  const host = hostOf(url);
+  if (!host) return false;
+  return SIGNIN_HOSTS.some((h) => host === h || host.endsWith('.' + h));
+}
+
 // Plain http:// is upgraded to https:// for top-level navigation. Loopback
 // is exempt so local dev servers still work.
 function shouldUpgrade(details) {
@@ -321,6 +336,12 @@ function syncRequestHandler(sess) {
   if (!wanted) return sess.webRequest.onBeforeRequest(null);
 
   sess.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, (details, callback) => {
+    // Never filter the sign-in flow -- the request itself, or anything a
+    // sign-in page loads. This is what keeps Google from claiming the
+    // browser has JavaScript off.
+    if (isSignInHost(details.url) || isSignInHost(documentUrlOf(details))) {
+      return callback({});
+    }
     if (settings.blockTrackers && isTracker(details.url)) {
       blockedCount++;
       return callback({ cancel: true });
