@@ -911,6 +911,11 @@ const SETTINGS_SECTIONS = [
         key: 'blockWebRTCLeak',
         label: 'Hide your local address from WebRTC',
         hint: 'Without this a page can use WebRTC to discover your machine on the local network, even through a VPN.'
+      },
+      {
+        key: 'blockThirdPartyCookies',
+        label: 'Block third-party cookies',
+        hint: 'The main way advertisers follow you from one site to the next. Sites you actually visit keep their own cookies, so you stay signed in; only the trackers riding along get cut off.'
       }
     ]
   },
@@ -965,6 +970,11 @@ const SETTINGS_SECTIONS = [
         key: 'clearHistoryOnExit',
         label: 'Clear browsing history when the browser closes',
         hint: 'Does not sign you out; cookies are untouched.'
+      },
+      {
+        key: 'clearDataOnExit',
+        label: 'Erase everything when the browser closes',
+        hint: 'Wipes cookies, logins, cache and site storage on quit, so every launch starts from scratch. Most private, but you sign in again each time.'
       }
     ]
   }

@@ -172,6 +172,29 @@ function isSignInHost(url) {
   return SIGNIN_HOSTS.some((h) => host === h || host.endsWith('.' + h));
 }
 
+// A request is third-party when the site it goes to is a different
+// registrable domain than the page making it. Third-party cookies are the
+// main way advertisers follow you from site to site, so we can refuse to
+// send or accept them. Same-site requests, and the page navigation itself,
+// are always first-party and keep their cookies -- that is what keeps you
+// signed in to the sites you actually use.
+function isThirdPartyRequest(details) {
+  if (details.resourceType === 'mainFrame') return false;   // the page itself
+  const docDomain = adblock.registrableDomain(hostOf(documentUrlOf(details)));
+  if (!docDomain) return false;   // no page context: treat as first-party
+  const reqDomain = adblock.registrableDomain(hostOf(details.url));
+  return !!reqDomain && reqDomain !== docDomain;
+}
+
+// Whether this request's cookies should be stripped: third-party, blocking
+// is on, and it is not part of a sign-in flow (those need their cookies).
+function blockCookiesFor(details) {
+  return settings.blockThirdPartyCookies &&
+    isThirdPartyRequest(details) &&
+    !isSignInHost(details.url) &&
+    !isSignInHost(documentUrlOf(details));
+}
+
 // Plain http:// is upgraded to https:// for top-level navigation. Loopback
 // is exempt so local dev servers still work.
 function shouldUpgrade(details) {
@@ -227,9 +250,25 @@ function syncClientHints(sess) {
   }
 }
 
+// The other half of third-party cookie blocking: stop a tracker setting a
+// cookie in the first place, by dropping Set-Cookie from its responses.
+function syncResponseHandler(sess) {
+  sess.webRequest.onHeadersReceived({ urls: ['<all_urls>'] }, (details, callback) => {
+    if (!blockCookiesFor(details)) return callback({});
+    const headers = details.responseHeaders;
+    if (!headers) return callback({});
+    let changed = false;
+    for (const key of Object.keys(headers)) {
+      if (key.toLowerCase() === 'set-cookie') { delete headers[key]; changed = true; }
+    }
+    return changed ? callback({ responseHeaders: headers }) : callback({});
+  });
+}
+
 function applyNetworkPolicy(sess) {
   syncRequestHandler(sess);
   syncHeaderHandler(sess);
+  syncResponseHandler(sess);
   syncWebAuthnPolicy(sess);
   syncClientHints(sess);
 
@@ -256,9 +295,12 @@ const DEFAULT_SETTINGS = {
   sendDoNotTrack: true,
   trimReferrer: false,        // off by default: breaks hotlink-protected images
   blockWebRTCLeak: true,
+  blockThirdPartyCookies: true,
   allowNotifications: true,
   allowClipboard: true,
   blockAds: true,
+  // Off by default: it signs you out of everything each time you quit.
+  clearDataOnExit: false,
   // Off, so the modal Windows "Choose a passkey" box never appears. This
   // was briefly turned back on when a Google sign-in failure looked like it
   // might be caused by touching the credentials API. It was not -- that
@@ -399,10 +441,13 @@ function syncHeaderHandler(sess) {
     // Rewrite the brand hints to include "Google Chrome" wherever Chromium
     // already sends them (it decides per-request whether to). Case-insensitive
     // because the header casing is not ours to assume.
+    const dropCookies = blockCookiesFor(details);
     for (const key of Object.keys(headers)) {
       const lower = key.toLowerCase();
       if (lower === 'sec-ch-ua') headers[key] = SEC_CH_UA;
       else if (lower === 'sec-ch-ua-full-version-list') headers[key] = SEC_CH_UA_FULL;
+      // Do not hand a third-party tracker the cookie it uses to recognise you.
+      else if (dropCookies && lower === 'cookie') delete headers[key];
     }
 
     if (settings.sendDoNotTrack) {
@@ -1956,9 +2001,23 @@ app.on('before-quit', () => {
   flushHistory();
 });
 
-app.on('window-all-closed', () => {
+app.on('window-all-closed', async () => {
   flushHistory();
   if (process.platform === 'darwin') return;
+
+  // Leave nothing behind if asked: cookies, logins, cache and site storage
+  // are all wiped before the process exits, so the next launch starts clean.
+  if (settings.clearDataOnExit) {
+    try {
+      for (const sess of sessions) {
+        await sess.clearStorageData();
+        await sess.clearCache();
+      }
+    } catch (err) {
+      console.error('Could not clear data on exit:', err.message);
+    }
+  }
+
   if (updateReadyToInstall) {
     autoUpdater.quitAndInstall();
   } else {
