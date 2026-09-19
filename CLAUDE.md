@@ -327,6 +327,22 @@ once. Now:
 - **`clearDataOnExit`** (off) wipes cookies, storage and cache for every
   session on `window-all-closed` before quitting -- that handler is `async`
   for this; do not make it sync again.
+- **Encrypted DNS** (`secureDns`, on): `applyDns()` calls
+  `app.configureHostResolver` in `'secure'` mode with Quad9 +
+  Cloudflare-security DoH servers, so address lookups are encrypted (the
+  network cannot see visited sites) and both providers refuse known
+  malware/phishing domains. Called in `whenReady` **after** `loadSettings`
+  (so a saved "off" is honoured) and again from `applySettings`. `'secure'`
+  mode means DoH-only: on a network that blocks DoH entirely, resolution
+  fails and the user must toggle it off -- hence the toggle and its hint.
+  Verified normal sites still resolve through it.
+- **The genuine Chrome gaps that remain** (do not pretend otherwise): full
+  Safe Browsing (Google's ML phishing model + download scanning + their web
+  crawl) needs Google's own service/key and is only approximated here by
+  DNS-level malware blocking plus the tracker/ad lists; and Chromium
+  security patches only arrive when Electron is upgraded and re-run, not on
+  Chrome's few-day cadence -- current at Chromium 152, but this is the one
+  thing that drifts, so keeping Electron current is a security task.
 - Do not confuse the two cookie controls: this is automatic per-request
   third-party blocking; "Sign out everywhere" / `clearData` is the manual,
   whole-session wipe.
