@@ -313,6 +313,23 @@ once. Now:
   layer, and top-level `http://` is upgraded to `https://` (loopback
   exempt). Matching is exact-host-or-dot-suffix, so `myhotjar.com` does not
   match `hotjar.com`. Trim the list if a site you need misbehaves.
+- **Third-party cookies are blocked** (`blockThirdPartyCookies`, on): the
+  `Cookie` header is stripped from third-party requests in
+  `onBeforeSendHeaders` and `Set-Cookie` from third-party responses in
+  `onHeadersReceived` (`syncResponseHandler`). "Third-party" is by
+  *registrable domain* (`adblock.registrableDomain`), so a site's own
+  subdomains stay first-party -- crucially, `accounts`/`mail`/`apis.google.com`
+  all reduce to `google.com`, so Google sign-in and Gmail are unaffected
+  (verified: Gmail stays signed in with this on). `mainFrame` navigations and
+  the sign-in hosts are always exempt. Because Aurora's sidebar panels load
+  each Google property first-party in its own webview, none of them rely on
+  third-party cookies.
+- **`clearDataOnExit`** (off) wipes cookies, storage and cache for every
+  session on `window-all-closed` before quitting -- that handler is `async`
+  for this; do not make it sync again.
+- Do not confuse the two cookie controls: this is automatic per-request
+  third-party blocking; "Sign out everywhere" / `clearData` is the manual,
+  whole-session wipe.
 
 ## Extensions
 
