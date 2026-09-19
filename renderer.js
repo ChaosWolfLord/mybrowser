@@ -916,6 +916,11 @@ const SETTINGS_SECTIONS = [
         key: 'blockThirdPartyCookies',
         label: 'Block third-party cookies',
         hint: 'The main way advertisers follow you from one site to the next. Sites you actually visit keep their own cookies, so you stay signed in; only the trackers riding along get cut off.'
+      },
+      {
+        key: 'secureDns',
+        label: 'Encrypted DNS (and block dangerous sites)',
+        hint: 'Looks up site addresses over an encrypted connection, so the network you are on cannot see which sites you visit. The providers used (Quad9 and Cloudflare) also refuse known malware and phishing sites, so those simply fail to load. Turn off only if a network blocks it and pages stop loading.'
       }
     ]
   },

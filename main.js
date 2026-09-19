@@ -296,6 +296,7 @@ const DEFAULT_SETTINGS = {
   trimReferrer: false,        // off by default: breaks hotlink-protected images
   blockWebRTCLeak: true,
   blockThirdPartyCookies: true,
+  secureDns: true,
   allowNotifications: true,
   allowClipboard: true,
   blockAds: true,
@@ -472,7 +473,30 @@ function syncHeaderHandler(sess) {
   });
 }
 
+// Encrypted DNS (DNS-over-HTTPS), the way Chrome does it. Two things at once:
+// your address lookups are encrypted, so the network you are on cannot see or
+// log which sites you visit; and both providers here refuse to resolve known
+// malware and phishing domains, so a dangerous site simply fails to load --
+// a slice of what Chrome's Safe Browsing does. Quad9 first, Cloudflare's
+// security resolver as backup.
+function applyDns() {
+  try {
+    app.configureHostResolver(settings.secureDns
+      ? {
+          secureDnsMode: 'secure',
+          secureDnsServers: [
+            'https://dns.quad9.net/dns-query',
+            'https://security.cloudflare-dns.com/dns-query'
+          ]
+        }
+      : { secureDnsMode: 'automatic' });
+  } catch (err) {
+    console.error('Could not configure secure DNS:', err.message);
+  }
+}
+
 function applySettings() {
+  applyDns();
   // Every window's session, not just the first: a private window has its own
   // and must be protected the same way.
   sessions.forEach((sess) => {
@@ -1976,6 +2000,7 @@ app.whenReady().then(() => {
   // through before-input-event, so nothing depends on this menu.
   Menu.setApplicationMenu(null);
   loadSettings();
+  applyDns();   // after loadSettings, so a saved "off" is honoured
   loadExtensionRegistry();
   loadBookmarks();
   loadHistory();
